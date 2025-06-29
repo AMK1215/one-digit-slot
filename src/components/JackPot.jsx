@@ -1,0 +1,308 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+// စိတ်ကြိုက် Toast/Notification Component
+const Toast = ({ message, type, onClose }) => {
+  const bgColor = type === 'win' ? 'bg-green-500' : 'bg-blue-500';
+  const borderColor = type === 'win' ? 'border-green-700' : 'border-blue-700';
+
+  return (
+    <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 transition-transform transform duration-300 ease-out animate-fade-in-down ${bgColor} text-white border ${borderColor}`}>
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-auto p-1 rounded-full hover:bg-white hover:bg-opacity-20">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+  );
+};
+
+
+function JackPot() {
+  const [totalPlayerLose, setTotalPlayerLose] = useState(0);
+  const [jackpotDisplayAmount, setJackpotDisplayAmount] = useState(0);
+  const [nextDrawTime, setNextDrawTime] = useState(null);
+  const [countdown, setCountdown] = useState('');
+  const [latestWinners, setLatestWinners] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true); // ကနဦး full-screen load အတွက်သာ
+
+  const jackpotCalculationIntervalRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const dataFetchIntervalRef = useRef(null);
+  const lastDrawCheckTimeRef = useRef(new Date()); // နောက်ဆုံး draw ကို စစ်ဆေးသည့်အချိန်ကို မှတ်ရန်
+
+  const JACKPOT_MULTIPLIER = 100;
+  const WINNER_SPLIT_PERCENTAGE = 0.30;
+  const SIMULATED_ACTIVE_PLAYERS = 100;
+
+  // နောက်ထပ် Draw Time ကို တွက်ချက်သော Function
+  const calculateNextDrawTime = useCallback(() => {
+    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const drawTimes = [
+      new Date(today).setHours(10, 0, 0, 0), // မနက် 10 နာရီ
+      new Date(today).setHours(15, 0, 0, 0), // နေ့လယ် 3 နာရီ
+      new Date(today).setHours(20, 0, 0, 0)  // ညနေ 8 နာရီ
+    ].map(ts => new Date(ts));
+
+    let nextTime = null;
+    for (const draw of drawTimes) {
+      if (draw > now) {
+        nextTime = draw;
+        break;
+      }
+    }
+
+    if (!nextTime) {
+      const tomorrow10AM = new Date();
+      tomorrow10AM.setDate(now.getDate() + 1);
+      tomorrow10AM.setHours(10, 0, 0, 0);
+      nextTime = tomorrow10AM;
+    }
+    return nextTime;
+  }, []);
+
+  // Countdown ကို Update လုပ်ပြီး Draw Logic ကို ခေါ်သော Function
+  const updateCountdown = useCallback(async () => {
+    if (!nextDrawTime) return;
+
+    const now = new Date();
+    const difference = nextDrawTime.getTime() - now.getTime();
+
+    if (difference <= 0) {
+      setCountdown('DRAWING NOW!');
+      // Interval များ Draw အချိန်ဝန်းကျင်တွင် အလျင်အမြန် ခေါ်ဆိုမှုများ ဖြစ်ပေါ်ခြင်းကို တားဆီးရန်
+      if ((now.getTime() - lastDrawCheckTimeRef.current.getTime()) > 5000) { // နောက်ဆုံး စစ်ဆေးချိန်မှ 5 စက္ကန့် ကျော်မှသာ Draw Logic ကို ခေါ်သည်
+        lastDrawCheckTimeRef.current = now; // နောက်ဆုံး စစ်ဆေးချိန်ကို Update လုပ်သည်
+        
+        // --- Draw Logic ကို အတုယူသည် ---
+        const currentJackpotAtDraw = totalPlayerLose * JACKPOT_MULTIPLIER;
+        const potentialWinnersPool = currentJackpotAtDraw * WINNER_SPLIT_PERCENTAGE;
+        let numWinners = Math.floor(SIMULATED_ACTIVE_PLAYERS * WINNER_SPLIT_PERCENTAGE);
+        if (numWinners === 0 && potentialWinnersPool > 0) numWinners = 1;
+
+        let newWinnersForDraw = [];
+        if (numWinners > 0 && potentialWinnersPool > 0) {
+          const names = ['မောင်မောင်', 'စိုးစိုးထွေး', 'ကိုကို', 'မမ', 'အောင်အောင်', 'ဇော်ဇော်', 'မြတ်နိုး'];
+          const amountPerWinner = potentialWinnersPool / numWinners;
+
+          for (let i = 0; i < numWinners; i++) {
+            newWinnersForDraw.push({
+              name: names[Math.floor(Math.random() * names.length)],
+              amount: Math.round(amountPerWinner * (0.8 + Math.random() * 0.4)), // ပမာဏကို ကွဲပြားအောင် ပြုလုပ်သည်
+              time: now.toLocaleString('my-MM')
+            });
+          }
+          newWinnersForDraw.sort((a, b) => b.amount - a.amount);
+        }
+
+        // Draw-specific Notification များကို ထည့်သွင်းပြီး latestWinners ကို Update လုပ်သည်
+        if (newWinnersForDraw.length > 0) {
+          addNotification(`Jackpot အချိန် - ${nextDrawTime.toLocaleTimeString('my-MM', {hour: '2-digit', minute:'2-digit'})} တွင် အနိုင်ရသူ: ${newWinnersForDraw[0].name} (${newWinnersForDraw[0].amount.toLocaleString()} MMK)`, 'win');
+        } else {
+          addNotification(`Jackpot Draw ပြီးပါပြီ။ လတ်တလော အနိုင်ရရှိသူ မရှိပါ။`, 'info');
+        }
+
+        setLatestWinners(prevWinners => [...newWinnersForDraw, ...prevWinners].slice(0, 10)); // Winner အသစ်များထည့်သွင်းပြီး ထိပ်ဆုံး 10 ခုကိုသာ ထားရှိသည်
+
+        // Draw ပြီးနောက် စုစုပေါင်းရှုံးငွေနှင့် Jackpot ပမာဏကို ပြန်လည်သတ်မှတ်သည် (Backend Reset ကို အတုယူသည်)
+        setTotalPlayerLose(0);
+        // setJackpotDisplayAmount(0); // ၎င်းကို Smooth Increment ဖြင့် သုညအသစ် Total Lose သို့ ပြောင်းလဲမည်
+
+        // နောက်ထပ် Draw အတွက် နောက်ထပ် Draw Time ကို ပြန်တွက်ချက်သည်
+        setNextDrawTime(calculateNextDrawTime());
+      }
+      return;
+    }
+
+    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+    setCountdown(
+      `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    );
+  }, [nextDrawTime, calculateNextDrawTime, totalPlayerLose, SIMULATED_ACTIVE_PLAYERS, WINNER_SPLIT_PERCENTAGE]);
+
+
+  // လက်ရှိ Jackpot Data (total_lose, current_jackpot_amount) ကို Fetch လုပ်သည် (အတုယူသည်)
+  const fetchCurrentJackpotData = useCallback(async () => {
+    // ၎င်းသည် ကနဦး Loading သို့မဟုတ် နောက်ခံ Refresh အတွက်ဖြစ်ပြီး Full-screen Spinner အတွက် မဟုတ်ပါ
+    await new Promise(resolve => setTimeout(resolve, 500)); // API နှောင့်နှေးမှုကို အတုယူသည်
+
+    // Backend မှ Total_lose တက်လာသည်ကို အတုယူသည်
+    // Backend သည် လက်ရှိ စုဆောင်းထားသော စုစုပေါင်းရှုံးငွေကို ပေးပို့မည်
+    const simulatedTotalLoseFromBackend = Math.floor(Math.random() * 5000) + totalPlayerLose; // အမြဲတိုးနေမည်
+    setTotalPlayerLose(simulatedTotalLoseFromBackend);
+
+  }, [totalPlayerLose]);
+
+
+  // နောက်ဆုံး Winner များကို Fetch လုပ်သည် (အတုယူသည်) (Draw ဖြစ်လျှင် သို့မဟုတ် ပို၍ ရှားပါးစွာ ခေါ်ဆိုနိုင်သည်)
+  const fetchLatestWinners = useCallback(async () => {
+    await new Promise(resolve => setTimeout(resolve, 1000)); // API နှောင့်နှေးမှုကို အတုယူသည်
+
+    // ၎င်းသည် သင်၏ /api/jackpot/winners/latest endpoint ဖြစ်မည်
+    // ကနဦး Load သို့မဟုတ် Periodic Refresh အတွက်၊ ၎င်းသည် ရှိပြီးသား Winner များကို Fetch လုပ်သည်
+    const names = ['မောင်မောင်', 'စိုးစိုးထွေး', 'ကိုကို', 'မမ', 'အောင်အောင်', 'ဇော်ဇော်', 'မြတ်နိုး'];
+    const now = new Date();
+    const mockWinners = Array.from({ length: 5 }, (_, i) => ({
+      name: names[Math.floor(Math.random() * names.length)],
+      amount: Math.floor(Math.random() * 50000) + 10000,
+      time: new Date(now.getTime() - (i * 10 * 60 * 1000)).toLocaleString('my-MM')
+    })).sort((a, b) => b.amount - a.amount);
+
+    setLatestWinners(mockWinners);
+
+  }, []);
+
+  // Notification များထည့်သွင်းခြင်းကို ကိုင်တွယ်သည်
+  const addNotification = (message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 7000); // 7 စက္ကန့်အကြာတွင် အလိုအလျောက် ပျောက်ကွယ်သည်
+  };
+
+
+  // ကနဦး Data Fetch နှင့် Interval Setup
+  useEffect(() => {
+    const init = async () => {
+      // Data အားလုံးကို ကနဦး Fetch လုပ်သည်
+      await fetchCurrentJackpotData();
+      await fetchLatestWinners();
+      setNextDrawTime(calculateNextDrawTime());
+      setInitialLoading(false);
+    };
+
+    init();
+
+    // ကနဦး Load ပြီးနောက် Interval များ တည်ဆောက်သည်
+    jackpotCalculationIntervalRef.current = setInterval(() => {
+      // totalPlayerLose အပေါ်အခြေခံ၍ Jackpot Display Amount ကို ချောမွေ့စွာတိုးမြှင့်သည်
+      setJackpotDisplayAmount(prevAmount => {
+        const targetAmount = totalPlayerLose * JACKPOT_MULTIPLIER;
+        if (prevAmount < targetAmount) {
+          return Math.min(targetAmount, prevAmount + Math.max(1, (targetAmount - prevAmount) / 20));
+        }
+        return targetAmount;
+      });
+    }, 100);
+
+    countdownIntervalRef.current = setInterval(updateCountdown, 1000);
+
+    // နောက်ခံ Data Fetch ကို ပုံမှန်လုပ်ဆောင်သည်
+    dataFetchIntervalRef.current = setInterval(() => {
+      fetchCurrentJackpotData();
+      // fetchLatestWinners(); // Draw ဖြစ်မှသာ Winner များကို Fetch လုပ်သည်၊ သို့မဟုတ် ပို၍ ရှားပါးစွာ
+    }, 30000);
+
+    // Component မဖျက်မီ Interval များကို ရှင်းလင်းသည်
+    return () => {
+      clearInterval(jackpotCalculationIntervalRef.current);
+      clearInterval(countdownIntervalRef.current);
+      clearInterval(dataFetchIntervalRef.current);
+    };
+  }, [calculateNextDrawTime, updateCountdown, fetchCurrentJackpotData, fetchLatestWinners, totalPlayerLose]);
+
+
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white text-2xl">
+        <svg className="animate-spin -ml-1 mr-3 h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Jackpot Data ကို Loading လုပ်နေသည်...
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4 font-inter">
+      {/* Notifications Panel */}
+      <div className="fixed top-0 right-0 p-4 space-y-2 z-50">
+        {notifications.map(n => (
+          <Toast key={n.id} message={n.message} type={n.type} onClose={() => setNotifications(prev => prev.filter(item => item.id !== n.id))} />
+        ))}
+      </div>
+
+      <div className="max-w-4xl mx-auto bg-gray-800 rounded-2xl shadow-xl border border-gray-700 overflow-hidden">
+        {/* Jackpot Display Bar */}
+        <div className="p-6 bg-gradient-to-r from-purple-800 to-pink-600 text-center rounded-t-2xl shadow-md">
+          <h1 className="text-4xl font-bold mb-2 drop-shadow-lg">Nanda AungOree: Jackpot</h1>
+          <p className="text-2xl font-semibold mb-2 text-yellow-300">
+            <span className="text-lg">လက်ရှိ Jackpot ပမာဏ:</span> <br />
+            <span className="text-5xl font-extrabold tracking-wide drop-shadow-lg">
+              {jackpotDisplayAmount.toLocaleString()} MMK
+            </span>
+          </p>
+          <div className="flex justify-around items-center mt-4">
+            <div className="text-center">
+              <p className="text-md font-medium text-gray-200">နောက်ထပ် Draw အချိန်:</p>
+              <p className="text-3xl font-bold text-white tracking-wider">
+                <span className="text-lg mr-2">🕒</span>{countdown}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-md font-medium text-gray-200">စုစုပေါင်း ရှုံးငွေ:</p>
+              <p className="text-3xl font-bold text-white tracking-wider">
+                {totalPlayerLose.toLocaleString()} MMK
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-8">
+          {/* Jackpot Winner Notification Panel (Live - Top of screen) */}
+          <div className="bg-gray-700 p-4 rounded-xl border border-gray-600 shadow-inner">
+            <h2 className="text-2xl font-semibold mb-3 text-white flex items-center">
+              <span className="mr-2 text-yellow-400">🔔</span> Jackpot အနိုင်ရရှိသူ အသိပေးချက်များ
+            </h2>
+            <div className="space-y-2">
+              {notifications.length === 0 && (
+                <p className="text-gray-400 italic">လက်ရှိ အနိုင်ရရှိသူ အသိပေးချက်များ မရှိသေးပါ။</p>
+              )}
+              {/* Notifications are displayed via the Toast component fixed at top-right */}
+            </div>
+          </div>
+
+          {/* Winner Leaderboard */}
+          <div className="bg-gray-700 p-4 rounded-xl border border-gray-600 shadow-inner">
+            <h2 className="text-2xl font-semibold mb-3 text-white flex items-center">
+              <span className="mr-2 text-green-400">🏆</span> အနိုင်ရရှိသူများ စာရင်း
+            </h2>
+            {latestWinners.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-gray-900 rounded-lg overflow-hidden">
+                  <thead className="bg-gray-600 text-gray-100 uppercase text-sm leading-normal">
+                    <tr>
+                      <th className="py-3 px-6 text-left">ကစားသမား အမည်</th>
+                      <th className="py-3 px-6 text-left">အနိုင်ရရှိငွေ (MMK)</th>
+                      <th className="py-3 px-6 text-left">အချိန်</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-gray-300 text-sm font-light">
+                    {latestWinners.map((winner, index) => (
+                      <tr key={index} className="border-b border-gray-700 hover:bg-gray-600">
+                        <td className="py-3 px-6 text-left whitespace-nowrap">{winner.name}</td>
+                        <td className="py-3 px-6 text-left font-bold text-lg text-yellow-400">{winner.amount.toLocaleString()}</td>
+                        <td className="py-3 px-6 text-left">{winner.time}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-400">လတ်တလော အနိုင်ရရှိသူများ မရှိသေးပါ။</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default JackPot;
