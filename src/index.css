@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-@import "tailwindcss/base";
+/* @import "tailwindcss/base";
 @import "tailwindcss/components";
-@import "tailwindcss/utilities";
+@import "tailwindcss/utilities"; */
 
 /* လိုအပ်ပါက စိတ်ကြိုက် CSS ထည့်နိုင်သည် */
 body {
