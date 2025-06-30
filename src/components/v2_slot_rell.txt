@@ -1,3 +1,4 @@
+// SlotRell.js (Enhanced with Toast Notifications and Styled UI)
 import { useState, useEffect, useRef } from 'react';
 
 // Constants (Traditional Myanmar logic)
@@ -7,12 +8,14 @@ const PAYOUT_SMALL_BIG = 2;
 const PAYOUT_ODD_EVEN = 2;
 const JACKPOT_TIMES = ['10:00', '13:00', '21:00'];
 
-const smallDigits = [0, 1, 2, 3, 4];
-const bigDigits = [6, 7, 8, 9];
-const evenDigits = [0, 2, 4, 6, 8];
-const oddDigits = [1, 3, 5, 7, 9];
+// Define the digit groups for easier checking
+const smallDigits = [0, 1, 2, 3, 4]; // Small: digits 0, 1, 2, 3, 4 (middle digit 5 is NOT small)
+const bigDigits = [6, 7, 8, 9];    // Big: digits 6, 7, 8, 9
+const evenDigits = [0, 2, 4, 6, 8]; // Even: digits 0, 2, 4, 6, 8
+const oddDigits = [1, 3, 5, 7, 9];   // Odd: digits 1, 3, 5, 7, 9
 
 // Utility functions
+// Helper function to format seconds into HH:MM:SS
 function formatTime(seconds) {
   const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
@@ -20,18 +23,24 @@ function formatTime(seconds) {
   return `${h}:${m}:${s}`;
 }
 
+// Helper function to calculate the next upcoming jackpot time
 function calculateNextJackpot() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let nextTime = null;
+
+  // Find the next jackpot time today
   for (const timeStr of JACKPOT_TIMES) {
     const [hours, minutes] = timeStr.split(':').map(Number);
     const targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes, 0);
+
     if (targetDate > now) {
       nextTime = targetDate;
       break;
     }
   }
+
+  // If no upcoming jackpot today, set for the first time tomorrow
   if (!nextTime) {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
@@ -46,7 +55,7 @@ function Toast({ message, type }) {
   const bgColor =
     type === 'win' ? 'bg-green-500'
       : type === 'lose' ? 'bg-red-500'
-        : 'bg-blue-500';
+        : 'bg-blue-500'; // Default to blue for 'info'
   return (
     <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 transition-transform transform duration-300 ease-out animate-fade-in-down ${bgColor} text-white border border-white`}>
       <span>{message}</span>
@@ -56,117 +65,127 @@ function Toast({ message, type }) {
 
 function SlotRell() {
   // State Variables
-  const [wallet, setWallet] = useState(1000);
-  const [bet, setBet] = useState(10);
-  const [pick, setPick] = useState(null);
-  const [result, setResult] = useState(null);
-  const [message, setMessage] = useState('');
-  const [cd, setCd] = useState(5);
-  const [betOpen, setBetOpen] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [lastWins, setLastWins] = useState([]);
-  const [jackpot, setJackpot] = useState(5000);
-  const [nextJackpotTime, setNextJackpotTime] = useState('');
+  const [wallet, setWallet] = useState(1000); // Player's current balance
+  const [bet, setBet] = useState(10); // Amount to bet in each round
+  const [pick, setPick] = useState(null); // The digit or category selected by the player
+  const [result, setResult] = useState(null); // The randomly rolled digit
+  const [message, setMessage] = useState(''); // General game messages (e.g., instructions, errors)
+  const [cd, setCd] = useState(5); // Countdown to the next betting phase or game start
+  const [betOpen, setBetOpen] = useState(false); // Flag to indicate if betting is open
+  const [running, setRunning] = useState(false); // Flag to indicate if the game is currently rolling
+  const [toast, setToast] = useState(null); // State for toast notifications
+  const [lastWins, setLastWins] = useState([]); // State for last won prize numbers
+  const [jackpot, setJackpot] = useState(5000); // Placeholder for jackpot amount
+  const [nextJackpotTime, setNextJackpotTime] = useState(''); // Formatted string for next jackpot countdown
 
   // Timer Refs
   const cdRef = useRef(null);
+  const gameRef = useRef(null);
   const jackpotRef = useRef(null);
-
-  // --- Ref to always access the latest pick value inside intervals ---
-  const pickRef = useRef(pick);
-  useEffect(() => { pickRef.current = pick; }, [pick]);
 
   // Lifecycle useEffect for initial setup and cleanup
   useEffect(() => {
     console.log("[useEffect] Component mounted, starting game loop and jackpot timer.");
+    // Start the main game cycle
     startGameLoop();
+    // Initialize and update jackpot countdown
     updateJackpotCountdown();
     jackpotRef.current = setInterval(updateJackpotCountdown, 1000);
 
+    // Cleanup function to clear all intervals when the component unmounts
     return () => {
       console.log("[useEffect] Cleaning up intervals on component unmount.");
       clearInterval(cdRef.current);
+      clearInterval(gameRef.current);
       clearInterval(jackpotRef.current);
     };
-  }, []);
+  }, []); // Empty dependency array ensures this runs only once on mount
 
+  // Function to show a toast notification
   function showToast(msg, type = 'info') {
     console.log(`[Toast] Displaying toast: Type=${type}, Message="${msg}"`);
     setToast({ msg, type });
+    // Clear the toast after 4 seconds
     setTimeout(() => {
       setToast(null);
       console.log("[Toast] Toast cleared.");
     }, 4000);
   }
 
+  // Function to update the jackpot countdown display
   function updateJackpotCountdown() {
     const nextJackpotDate = calculateNextJackpot();
     const now = new Date();
     const diff = Math.max(0, Math.floor((nextJackpotDate.getTime() - now.getTime()) / 1000));
     setNextJackpotTime(formatTime(diff));
-    // console.log(`[Jackpot] Next jackpot in: ${formatTime(diff)}`);
+    console.log(`[Jackpot] Next jackpot in: ${formatTime(diff)}`);
   }
 
+  // Function to initiate the main game cycle
   function startGameLoop() {
-    // console.log("[Game Cycle] Starting initial game loop.");
-    runCountdown();
+    console.log("[Game Cycle] Starting initial game loop.");
+    runCountdown(); // Start the first countdown
   }
 
+  // Function to manage the countdown before betting opens and then before the game runs
   function runCountdown() {
     console.log("[Countdown] Starting new round countdown sequence.");
-    clearInterval(cdRef.current);
-    setRunning(false);
-    setBetOpen(false);
-    setCd(5);
-    setResult(null);
-    setMessage('');
-    // Don't reset pick here! Let user keep their pick for next round if desired.
+    clearInterval(cdRef.current); // Clear any existing countdown
+    setRunning(false); // Game is not running yet
+    setBetOpen(false); // Betting is initially closed
+    setCd(5); // Reset countdown for pre-betting phase
+    setResult(null); // Clear the previous result digit before new round starts
+    setMessage(''); // Clear previous main message
 
     let preCount = 5;
+    // Phase 1: Pre-betting countdown (5 seconds)
     cdRef.current = setInterval(() => {
       preCount--;
       setCd(preCount);
       console.log(`[Countdown] Pre-betting: ${preCount}s remaining.`);
       if (preCount <= 0) {
-        clearInterval(cdRef.current);
-        setBetOpen(true);
-        setCd(10);
-        console.log("[Countdown] Betting phase OPENED. 10 seconds for betting.");
-        let betCount = 10;
+        clearInterval(cdRef.current); // Stop pre-betting countdown
+        setBetOpen(true); // Open betting
+        setCd(4); // Start betting countdown: 4 seconds as per the UI text
+        console.log("[Countdown] Betting phase OPENED. 4 seconds for betting.");
+
+        // Phase 2: Betting countdown (4 seconds)
+        let betCount = 4;
         cdRef.current = setInterval(() => {
           betCount--;
           setCd(betCount);
           console.log(`[Countdown] Betting: ${betCount}s remaining.`);
           if (betCount <= 0) {
-            clearInterval(cdRef.current);
-            setBetOpen(false);
-            setCd(0);
+            clearInterval(cdRef.current); // Stop betting countdown
+            setBetOpen(false); // Close betting
+            setCd(0); // Reset countdown display
             console.log("[Countdown] Betting phase CLOSED. Initiating game run.");
-            runGame();
+            runGame(); // Run the game after betting closes
           }
         }, 1000);
       }
-    }, 1000);
+    }, 1000); // Update every second for pre-betting phase
   }
 
+  // Main game logic to determine win/loss and update balance
   function runGame() {
-    const pickVal = pickRef.current;
-    console.log("[runGame] Game logic started. pickVal:", pickVal);
+    console.log("[runGame] Game logic started.");
     setRunning(true);
     setMessage('');
 
-    if (pickVal === null) {
-      const msg = 'ကျေးဇူးပြု၍ ဂဏန်းတစ်ခု သို့မဟုတ် ကဏ္ဍတစ်ခုကို ရွေးချယ်ပါ။';
+    // Validation checks for bet and selection
+    if (pick === null) {
+      const msg = 'ကျေးဇူးပြု၍ ဂဏန်းတစ်ခု သို့မဟုတ် ကဏ္ဍတစ်ခုကို ရွေးချယ်ပါ။'; // Myanmar: "Please select a digit or a category."
       setMessage(msg);
       showToast('⚠️ ' + msg, 'info');
       console.warn("[runGame] Validation failed: No digit/category picked.");
       setRunning(false);
-      setTimeout(() => runCountdown(), 2000);
+      // Reset pick to null only after displaying the error message and toast
+      setTimeout(() => runCountdown(), 2000); // Auto-start next round after a short pause
       return;
     }
     if (bet <= 0) {
-      const msg = 'လောင်းကြေးပမာဏသည် သုညထက် ကြီးရပါမည်။';
+      const msg = 'လောင်းကြေးပမာဏသည် သုညထက် ကြီးရပါမည်။'; // Myanmar: "Bet amount must be greater than zero."
       setMessage(msg);
       showToast('⚠️ ' + msg, 'info');
       console.warn("[runGame] Validation failed: Invalid bet amount.", bet);
@@ -175,7 +194,7 @@ function SlotRell() {
       return;
     }
     if (bet > wallet) {
-      const msg = 'သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။';
+      const msg = 'သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။'; // Myanmar: "Insufficient balance."
       setMessage(msg);
       showToast('⛔ ' + msg, 'lose');
       console.warn("[runGame] Validation failed: Insufficient balance.", wallet, bet);
@@ -190,68 +209,75 @@ function SlotRell() {
     let winStatus = 'lose';
     let toastMsg = '';
 
-    console.log(`[runGame] Rolled number: ${rolled}. User picked: ${pickVal}. Bet: ${bet}. Wallet before: ${wallet}`);
+    console.log(`[runGame] Rolled number: ${rolled}. User picked: ${pick}. Bet: ${bet}. Wallet before: ${wallet}`);
 
-    if (typeof pickVal === 'number') {
-      if (pickVal === rolled) {
+    // Determine win status and calculate win amount based on selected pick
+    if (typeof pick === 'number') {
+      // Exact digit bet
+      if (pick === rolled) {
         winStatus = 'win';
-        if (pickVal === 5) {
-          winAmt = bet * PAYOUT_DIGIT_5;
+        if (pick === 5) {
+          winAmt = bet * PAYOUT_DIGIT_5; // Payout x15 for digit 5
           toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
           console.log(`[runGame] WIN: Exact digit 5. Win Amount: ${winAmt}`);
         } else {
-          winAmt = bet * PAYOUT_EXACT_DIGIT;
+          winAmt = bet * PAYOUT_EXACT_DIGIT; // Payout x10 for other digits
           toastMsg = `🎉 သင်အနိုင်ရသည်! ဂဏန်း: ${rolled} ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
           console.log(`[runGame] WIN: Exact digit ${rolled}. Win Amount: ${winAmt}`);
         }
       } else {
         toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked exact digit ${pickVal}, but rolled ${rolled}.`);
+        console.log(`[runGame] LOSE: Picked exact digit ${pick}, but rolled ${rolled}.`);
       }
-    } else if (pickVal === 'small') {
+    } else if (pick === 'small') {
+      // Small group bet (0,1,2,3,4)
       if (smallDigits.includes(rolled)) {
         winStatus = 'win';
-        winAmt = bet * PAYOUT_SMALL_BIG;
+        winAmt = bet * PAYOUT_SMALL_BIG; // Payout x2
         toastMsg = `🎉 သင်အနိုင်ရသည်! (Small: 0-4) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
         console.log(`[runGame] WIN: Small. Rolled ${rolled}. Win Amount: ${winAmt}`);
       } else {
         toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
         console.log(`[runGame] LOSE: Picked Small, but rolled ${rolled}.`);
       }
-    } else if (pickVal === 'big') {
+    } else if (pick === 'big') {
+      // Big group bet (6,7,8,9)
       if (bigDigits.includes(rolled)) {
         winStatus = 'win';
-        winAmt = bet * PAYOUT_SMALL_BIG;
+        winAmt = bet * PAYOUT_SMALL_BIG; // Payout x2
         toastMsg = `🎉 သင်အနိုင်ရသည်! (Big: 6-9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
         console.log(`[runGame] WIN: Big. Rolled ${rolled}. Win Amount: ${winAmt}`);
       } else {
         toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
         console.log(`[runGame] LOSE: Picked Big, but rolled ${rolled}.`);
       }
-    } else if (pickVal === 'middle') {
+    } else if (pick === 'middle') {
+      // Middle bet (only digit 5)
       if (rolled === 5) {
         winStatus = 'win';
-        winAmt = bet * PAYOUT_DIGIT_5;
+        winAmt = bet * PAYOUT_DIGIT_5; // Payout x15 for middle
         toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
         console.log(`[runGame] WIN: Middle (5). Rolled ${rolled}. Win Amount: ${winAmt}`);
       } else {
         toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
         console.log(`[runGame] LOSE: Picked Middle, but rolled ${rolled}.`);
       }
-    } else if (pickVal === 'even') {
+    } else if (pick === 'even') {
+      // Even group bet (0,2,4,6,8)
       if (evenDigits.includes(rolled)) {
         winStatus = 'win';
-        winAmt = bet * PAYOUT_ODD_EVEN;
+        winAmt = bet * PAYOUT_ODD_EVEN; // Payout x2
         toastMsg = `🎉 သင်အနိုင်ရသည်! (Even: 0,2,4,6,8) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
         console.log(`[runGame] WIN: Even. Rolled ${rolled}. Win Amount: ${winAmt}`);
       } else {
         toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
         console.log(`[runGame] LOSE: Picked Even, but rolled ${rolled}.`);
       }
-    } else if (pickVal === 'odd') {
+    } else if (pick === 'odd') {
+      // Odd group bet (1,3,5,7,9)
       if (oddDigits.includes(rolled)) {
         winStatus = 'win';
-        winAmt = bet * PAYOUT_ODD_EVEN;
+        winAmt = bet * PAYOUT_ODD_EVEN; // Payout x2
         toastMsg = `🎉 သင်အနိုင်ရသည်! (Odd: 1,3,5,7,9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
         console.log(`[runGame] WIN: Odd. Rolled ${rolled}. Win Amount: ${winAmt}`);
       } else {
@@ -260,24 +286,31 @@ function SlotRell() {
       }
     }
 
+    // Update wallet balance, result digit, and last won numbers
     const newWallet = winStatus === 'win' ? wallet - bet + winAmt : wallet - bet;
     setWallet(newWallet);
     setResult(rolled);
-    setLastWins(prev => [rolled, ...prev.slice(0, 2)]);
+    // Slice to ensure we always keep only the last 3 elements, regardless of previous length.
+    setLastWins(prev => [rolled, ...prev.slice(0, 2)]); // Keep only the last 3 results including the current one
+
+    // Show toast notification and main message
     showToast(toastMsg, winStatus);
     setMessage(
       winStatus === 'win'
         ? `သင်နိုင်ပါသည်! ${rolled} ထွက်ပါသည်။ ${winAmt} MMK အနိုင်ရသည်။`
         : `ရှုံးပါသည်။ ${rolled} ထွက်သည်။`
     );
-    console.log(`[runGame] Wallet after: ${newWallet}. Result digit: ${rolled}. Last wins:`, [rolled, ...lastWins.slice(0, 2)]);
+    console.log(`[runGame] Wallet after: ${newWallet}. Result digit: ${rolled}. Last wins:`, [rolled, ...lastWins.slice(0,2)]);
 
+    // After a short delay, auto-start the next countdown
     setTimeout(() => {
       setRunning(false);
+      setPick(null); // Reset pick for the *next* round here, after current game resolves
       runCountdown();
     }, 2000);
   }
 
+  // Event handlers for UI interactions
   function handleBetChange(val) {
     setBet(val);
     console.log(`[User Action] Bet amount changed to: ${val}`);
@@ -287,41 +320,60 @@ function SlotRell() {
     console.log(`[User Action] Pick changed to: ${val}`);
   }
 
-  // --- UI ---
+  // UI Rendering
   return (
     <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#0f172a] text-white font-inter flex flex-col items-center">
+      {/* Top Header Section */}
       <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-800 rounded-lg shadow-md">
         <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">user name</div>
         <div className="px-3 py-1 bg-gray-700 rounded-md text-sm font-bold">Balance: ${wallet.toFixed(2)}</div>
         <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">log</div>
       </div>
-      <style>{`
-        @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
-        .animate-marquee {animation: marquee 15s linear infinite;}
-      `}</style>
+
+      {/* Marquee/Winner/Jackpot Text Section */}
+      <style>
+        {`
+        @keyframes marquee {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+        .animate-marquee {
+          animation: marquee 15s linear infinite;
+        }
+        `}
+      </style>
       <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
         <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
           winner list text, jackpot text , etc .......
         </p>
       </div>
+
+      {/* Jackpot Info Section - Simplified */}
       <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
         <div className="text-lg font-bold text-teal-300">Jackpot Amount: ${jackpot.toFixed(2)}</div>
         <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotTime}</div>
       </div>
+
+      {/* Main Animation Area / Result Display */}
       <div className="my-8 w-60 h-60 bg-gray-900 rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-teal-500">
+        {/* Show result or '?' based on game state */}
         {result !== null ? result : '?'}
         {cd > 0 && (
           <p className="absolute bottom-4 text-base text-yellow-300">
             {betOpen
-              ? `Betting ends in: ${cd}s`
-              : `Game start in: ${cd}s`
+              ? `Betting ends in: ${cd}s` // Show betting countdown
+              : `Game start in: ${cd}s`   // Show game start countdown
             }
           </p>
         )}
       </div>
+
+      {/* Betting Open Message */}
       {betOpen && (
         <p className="mb-4 text-green-400 text-lg animate-pulse">💸 လောင်းကြေးတင်နိုင်ပါပြီ! {cd} စက္ကန့်အတွင်း ထိုးပါ!</p>
       )}
+
+      {/* Bet Amount Input Section */}
       <div className="w-full flex flex-col items-center mb-6">
         <div className="flex items-center justify-center w-full max-w-sm">
           <button
@@ -344,6 +396,8 @@ function SlotRell() {
           >+</button>
         </div>
       </div>
+
+      {/* Digit Selection Buttons (0-9) */}
       <div className="w-full mb-8 max-w-xl">
         <h2 className="text-xl font-semibold text-gray-300 mb-3">သင်၏ ကံကောင်းသော ဂဏန်းကို ရွေးချယ်ပါ</h2>
         <div className="grid grid-cols-5 gap-3 mb-4">
@@ -360,6 +414,7 @@ function SlotRell() {
             >{d}</button>
           ))}
         </div>
+        {/* Category Selection Buttons (Small, Middle, Big, Even, Odd) */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <button
             onClick={() => handlePick('small')}
@@ -410,6 +465,8 @@ function SlotRell() {
           >Odd (1,3,5,7,9)</button>
         </div>
       </div>
+
+      {/* Last Won Prize Numbers */}
       <div className="w-full max-w-xs flex justify-center items-center gap-2 mb-6">
         <p className="text-lg font-semibold text-gray-300">last won prize number</p>
         <div className="flex space-x-1">
@@ -418,11 +475,15 @@ function SlotRell() {
           ))}
         </div>
       </div>
+
+      {/* Message Display */}
       {message && (
         <p className="mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in bg-blue-700 text-blue-100 border border-blue-600">
           {message}
         </p>
       )}
+
+      {/* Toast */}
       {toast && <Toast message={toast.msg} type={toast.type} />}
     </div>
   );
