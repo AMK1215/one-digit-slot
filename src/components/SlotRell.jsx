@@ -1,239 +1,390 @@
 import { useState, useEffect, useRef } from 'react';
 
+// Utility functions & constants
+const PAYOUT_EXACT_DIGIT = 5;
+const PAYOUT_DIGIT_5 = 10;
+const PAYOUT_SMALL_BIG = 2;
+const PAYOUT_ODD_EVEN = 2;
+const JACKPOT_TIMES = ['10:00', '13:00', '21:00'];
+
+function formatTime(seconds) {
+  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function calculateNextJackpot() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let nextTime = null;
+  for (const timeStr of JACKPOT_TIMES) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes, 0);
+    if (targetDate > now) {
+      nextTime = targetDate;
+      break;
+    }
+  }
+  if (!nextTime) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const [hours, minutes] = JACKPOT_TIMES[0].split(':').map(Number);
+    nextTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), hours, minutes, 0);
+  }
+  return nextTime;
+}
+
+// Toast component
+function Toast({ message, type }) {
+  const bgColor =
+    type === 'win' ? 'bg-green-500'
+      : type === 'lose' ? 'bg-red-500'
+      : 'bg-blue-500';
+  return (
+    <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 transition-transform transform duration-300 ease-out animate-fade-in-down ${bgColor} text-white border border-white`}>
+      <span>{message}</span>
+    </div>
+  );
+}
+
 function SlotRell() {
-  // ဂိမ်းအခြေအနေ (Game State)
-  const [walletBalance, setWalletBalance] = useState(1000); // ကနဦး လက်ကျန်ငွေ
-  const [betAmount, setBetAmount] = useState(10);
-  const [selectedDigit, setSelectedDigit] = useState(null); // ကစားသမား ရွေးချယ်သော ဂဏန်း
-  const [resultDigit, setResultDigit] = useState(null); // နောက်ဆုံး ပေါ်လာသော ဂဏန်း
-  const [isSpinning, setIsSpinning] = useState(false); // လှည့်နေသော Animation နှင့် Loading ကို ထိန်းချုပ်သည်
-  const [message, setMessage] = useState(''); // အနိုင်/အရှုံး/အမှား မက်ဆေ့ချ်များ
+  // 1. State Variables
+  const [wallet, setWallet] = useState(1000);
+  const [bet, setBet] = useState(10);
+  const [pick, setPick] = useState(null);
+  const [result, setResult] = useState(null);
+  const [message, setMessage] = useState('');
+  const [cd, setCd] = useState(5);
+  const [betOpen, setBetOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [lastWins, setLastWins] = useState([]);
+  const [jackpot, setJackpot] = useState(5000);
+  const [nextJackpotTime, setNextJackpotTime] = useState('');
 
-  // Animation အခြေအနေ (Animation State)
-  const [spinAnimationDigit, setSpinAnimationDigit] = useState(null);
-  const spinIntervalRef = useRef(null); // Interval ID ကို သိမ်းဆည်းရန် Ref
+  // 2. Timer Refs
+  const cdRef = useRef(null);
+  const gameRef = useRef(null);
+  const jackpotRef = useRef(null);
 
-  // Payout ကိန်းသေများ (Backend သို့မဟုတ် Config သို့ ရွှေ့နိုင်သည်)
-  const PAYOUT_EXACT_DIGIT = 5; // bet_amount * 5 (ဂဏန်း ၅ မှလွဲ၍)
-  const PAYOUT_DIGIT_5 = 10;    // bet_amount * 10 (ဂဏန်း ၅ အတွက်)
-
-  // လှည့်ခြင်းလုပ်ငန်းစဉ်ကို ကိုင်တွယ်သော Function
-  const handleSpin = async () => {
-    // အခြေခံ စစ်ဆေးမှုများ
-    if (selectedDigit === null) {
-      setMessage('လောင်းရန် ဂဏန်းတစ်ခုကို ရွေးချယ်ပေးပါ!');
-      return;
-    }
-    if (betAmount <= 0) {
-      setMessage('လောင်းကြေးပမာဏသည် သုညထက် ကြီးရမည်!');
-      return;
-    }
-    if (betAmount > walletBalance) {
-      setMessage('လက်ကျန်ငွေ မလုံလောက်ပါ! လောင်းကြေးလျှော့ချပေးပါ.');
-      return;
-    }
-
-    // မက်ဆေ့ချ်များနှင့် ရလဒ်များကို ပြန်လည်သတ်မှတ်သည်
-    setMessage('');
-    setResultDigit(null);
-    setIsSpinning(true);
-    setSpinAnimationDigit(null);
-
-    // လှည့်သော Animation ကို စတင်သည်
-    let animationCount = 0;
-    spinIntervalRef.current = setInterval(() => {
-      setSpinAnimationDigit(Math.floor(Math.random() * 10)); // ကျပန်းဂဏန်းများ လှည့်နေစေသည်
-      animationCount++;
-    }, 100); // ဂဏန်းတိုင်းကို 100ms တစ်ခါ ပြောင်းလဲသည်
-
-    // Animation စတင်ပြီးနောက် Backend API ခေါ်ဆိုမှုကို အတုယူသည် (တိုတောင်းသော နှောင့်နှေးမှုဖြင့်)
-    setTimeout(async () => {
-      clearInterval(spinIntervalRef.current); // လှည့်ခြင်းကို ရပ်သည်
-      setIsSpinning(false); // လှည့်သော Animation UI ကို ရပ်သည်
-
-      try {
-        // Backend API ခေါ်ဆိုမှုကို အတုယူသည်
-        const apiResponse = await simulateBackendSpin(selectedDigit, betAmount);
-
-        if (apiResponse.success) {
-          setResultDigit(apiResponse.data.rolledNumber);
-          setWalletBalance(apiResponse.data.newBalance);
-          setMessage(apiResponse.message);
-        } else {
-          setMessage(apiResponse.message);
-          setWalletBalance(apiResponse.data?.newBalance || walletBalance); // Backend အမှားရှိလျှင်ပင် လက်ကျန်ငွေကို ပြန်လည်သတ်မှတ်သည်
-        }
-      } catch (error) {
-        console.error('Spin လုပ်ဆောင်နေစဉ် Frontend အမှား:', error);
-        setMessage('လှည့်နေစဉ် အမှားတစ်ခု ဖြစ်ပေါ်ခဲ့သည်။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။');
-      } finally {
-        setSpinAnimationDigit(null); // Animation ပြီးဆုံးပါက ဂဏန်းကို ဖျက်သည်
-      }
-    }, 2500); // 2.5 စက္ကန့်ကြာ လှည့်သည် (100ms interval ဖြင့် 25 ကြိမ် ပြောင်းလဲသည်)
-  };
-
-  // Backend API ခေါ်ဆိုမှုကို အတုယူသော Function
-  const simulateBackendSpin = async (betDigit, currentBetAmount) => {
-    // လက်တွေ့ Application တွင် ၎င်းကို သင်၏ Laravel API သို့ ပေးပို့ရမည်:
-    // const response = await fetch('/api/spin', { method: 'POST', body: JSON.stringify({ betDigit, betAmount: currentBetAmount }) });
-    // const data = await response.json();
-    // return data;
-
-    // Network နှောင့်နှေးမှုကို အတုယူသည်
-    await new Promise(resolve => setTimeout(resolve, 500)); // Network အတွက် 0.5 စက္ကန့် ထပ်ဆောင်းသည်
-
-    const rolledNumber = Math.floor(Math.random() * 10);
-    let winStatus;
-    let winAmount = 0;
-
-    // အနိုင်/အရှုံးကို ဆုံးဖြတ်ပြီး အနိုင်ရငွေကို တွက်ချက်သည်
-    if (betDigit === rolledNumber) {
-      winStatus = 'win';
-      // သီးခြား Payout စည်းမျဉ်းများ
-      if (rolledNumber === 5) {
-        winAmount = currentBetAmount * PAYOUT_DIGIT_5;
-      } else {
-        winAmount = currentBetAmount * PAYOUT_EXACT_DIGIT;
-      }
-    } else {
-      winStatus = 'lose';
-      winAmount = 0; // ရှုံးလျှင် အနိုင်ရငွေ မရှိပါ
-    }
-
-    const newBalance = walletBalance - currentBetAmount + winAmount; // This needs to use the current state value for walletBalance
-
-    return {
-      success: true,
-      message: winStatus === 'win' ?
-        `သင်နိုင်ပါသည်! ဂဏန်းမှာ ${rolledNumber} ဖြစ်ပါသည်! သင် ${winAmount} အနိုင်ရရှိခဲ့ပါသည်!` :
-        `သင်ရှုံးပါသည်! ဂဏန်းမှာ ${rolledNumber} ဖြစ်ပါသည်.`,
-      data: {
-        rolledNumber,
-        winStatus,
-        winAmount,
-        newBalance
-      }
-    };
-  };
-
-  // Component မဖျက်မီ Interval ကို ရှင်းလင်းသည်
+  // 3. Lifecycle
   useEffect(() => {
+    console.log("[useEffect] Component mounted, starting game loop and jackpot timer.");
+    startGameLoop();
+    updateJackpotCountdown();
+    jackpotRef.current = setInterval(updateJackpotCountdown, 1000);
+
     return () => {
-      if (spinIntervalRef.current) {
-        clearInterval(spinIntervalRef.current);
-      }
+      clearInterval(cdRef.current);
+      clearInterval(gameRef.current);
+      clearInterval(jackpotRef.current);
+      console.log("[useEffect] Cleaned up intervals on unmount.");
     };
+    // eslint-disable-next-line
   }, []);
 
-  return (
-    <div className="p-8 rounded-2xl w-full text-center"> {/* အပို Style ဖယ်ရှားပြီး Central Alignment ကို ထိန်းထားသည် */}
-      <h1 className="text-4xl font-bold text-teal-400 mb-6 drop-shadow-lg">
-        🎰 One-Digit Slot
-      </h1>
+  // 4. Utility Handlers
+  function showToast(msg, type = 'info') {
+    console.log(`[Toast] (${type}) ${msg}`);
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  }
 
-      {/* Wallet Balance */}
-      <div className="mb-6 p-4 bg-gray-700 rounded-xl shadow-inner border border-gray-600">
-        <p className="text-xl text-gray-300 mb-1">သင်၏ လက်ကျန်ငွေ</p>
-        <p className="text-4xl font-extrabold text-white">
-          ${walletBalance.toFixed(2)}
+  function updateJackpotCountdown() {
+    const next = calculateNextJackpot();
+    const now = new Date();
+    const diff = Math.max(0, Math.floor((next - now) / 1000));
+    setNextJackpotTime(formatTime(diff));
+    // Uncomment next line if you want logs every second
+    // console.log(`[Jackpot Timer] Next jackpot in: ${formatTime(diff)}`);
+  }
+
+  // 5. Game Cycle Handlers
+  function startGameLoop() {
+    console.log("[Game] startGameLoop called");
+    runCountdown();
+    gameRef.current = setInterval(runCountdown, 10000);
+  }
+
+  // function runCountdown() {
+  //   console.log("[Countdown] Starting new round countdown.");
+  //   setRunning(false);
+  //   setBetOpen(false);
+  //   setCd(5);
+  //   setResult(null);
+  //   let count = 5;
+  //   cdRef.current = setInterval(() => {
+  //     count--;
+  //     setCd(count);
+  //     console.log(`[Countdown] ${count} seconds remaining before betting opens.`);
+  //     if (count === 0) {
+  //       clearInterval(cdRef.current);
+  //       setPick(null);
+  //       setBetOpen(true);
+  //       console.log("[Countdown] Betting phase OPENED for 4 seconds.");
+  //       setTimeout(() => {
+  //         setBetOpen(false);
+  //         console.log("[Countdown] Betting phase CLOSED. Running game...");
+  //         runGame();
+  //       }, 4000);
+  //     }
+  //   }, 1000);
+  // }
+
+  function runCountdown() {
+  console.log("[Countdown] Starting new round countdown.");
+  setRunning(false);
+  setBetOpen(false);
+  setCd(5);
+
+  let count = 5;
+  cdRef.current = setInterval(() => {
+    count--;
+    setCd(count);
+    console.log(`[Countdown] ${count} seconds remaining before betting opens.`);
+    if (count === 0) {
+      clearInterval(cdRef.current);
+      setPick(null);
+      setBetOpen(true);
+      setCd(10); // Start betting countdown: 10 seconds
+      let betCount = 10;
+      // Start new interval for betting time
+      cdRef.current = setInterval(() => {
+        betCount--;
+        setCd(betCount);
+        console.log(`[Countdown] ${betCount} seconds remaining for betting.`);
+        if (betCount === 0) {
+          clearInterval(cdRef.current);
+          setBetOpen(false);
+          setCd(0);
+          setTimeout(() => {
+            setResult(null); // Clear result just before new round result
+          }, 500); // Clear result after half a second for a better transition
+          console.log("[Countdown] Betting phase CLOSED. Running game...");
+          runGame();
+        }
+      }, 1000);
+    }
+  }, 1000);
+}
+
+
+  // 6. Main Game Logic
+  function runGame() {
+    setRunning(true);
+    setMessage('');
+    console.log("[Game] runGame called.");
+
+    // Validation
+   
+    if (bet <= 0) {
+      setMessage('လောင်းကြေးပမာဏသည် သုညထက် ကြီးရပါမည်။');
+      showToast('⚠️ လောင်းကြေးငွေ ထည့်ပါ။', 'info');
+      console.warn("[Game] Bet failed: Invalid bet amount.", bet);
+      return;
+    }
+    if (bet > wallet) {
+      setMessage('သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။');
+      showToast('⛔ လက်ကျန်ငွေ မလုံလောက်ပါ။', 'lose');
+      console.warn("[Game] Bet failed: Insufficient balance.", wallet, bet);
+      return;
+    }
+
+    // Result calculation
+    const rolled = Math.floor(Math.random() * 10);
+    let winAmt = 0;
+    let winStatus = 'lose';
+    let toastMsg = '';
+    console.log(`[Game] Random rolled digit: ${rolled}`);
+    console.log(`[Game] User pick: ${pick} | Bet: ${bet} | Wallet before: ${wallet}`);
+
+    if (typeof pick === 'number' && pick === rolled) {
+      winStatus = 'win';
+      winAmt = rolled === 5 ? bet * PAYOUT_DIGIT_5 : bet * PAYOUT_EXACT_DIGIT;
+      toastMsg = `🎉 သင်အနိုင်ရသည်! ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
+      console.log(`[Game] WIN: Exact digit (${rolled}). Win Amount: ${winAmt}`);
+    } else if (pick === 'small' && rolled <= 4) {
+      winStatus = 'win';
+      winAmt = bet * PAYOUT_SMALL_BIG;
+      toastMsg = `🎉 သင်အနိုင်ရသည်! ထွက်လာသော ဂဏန်း: ${rolled} (Small). ${winAmt} MMK အနိုင်ရသည်။`;
+      console.log(`[Game] WIN: Small (0-4). Win Amount: ${winAmt}`);
+    } else if (pick === 'big' && rolled >= 5) {
+      winStatus = 'win';
+      winAmt = bet * PAYOUT_SMALL_BIG;
+      toastMsg = `🎉 သင်အနိုင်ရသည်! ထွက်လာသော ဂဏန်း: ${rolled} (Big). ${winAmt} MMK အနိုင်ရသည်။`;
+      console.log(`[Game] WIN: Big (5-9). Win Amount: ${winAmt}`);
+    } else if (pick === 'odd' && rolled % 2 !== 0) {
+      winStatus = 'win';
+      winAmt = bet * PAYOUT_ODD_EVEN;
+      toastMsg = `🎉 သင်အနိုင်ရသည်! ထွက်လာသော ဂဏန်း: ${rolled} (Odd). ${winAmt} MMK အနိုင်ရသည်။`;
+      console.log(`[Game] WIN: Odd. Win Amount: ${winAmt}`);
+    } else if (pick === 'even' && rolled % 2 === 0) {
+      winStatus = 'win';
+      winAmt = bet * PAYOUT_ODD_EVEN;
+      toastMsg = `🎉 သင်အနိုင်ရသည်! ထွက်လာသော ဂဏန်း: ${rolled} (Even). ${winAmt} MMK အနိုင်ရသည်။`;
+      console.log(`[Game] WIN: Even. Win Amount: ${winAmt}`);
+    } else {
+      toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      console.log("[Game] LOSE.");
+    }
+
+    // Update wallet
+    const newWallet = winStatus === 'win' ? wallet - bet + winAmt : wallet - bet;
+    setWallet(newWallet);
+    setResult(rolled);
+    setLastWins(prev => [rolled, ...prev].slice(0, 3));
+    showToast(toastMsg, winStatus);
+    setMessage(
+      winStatus === 'win'
+        ? `သင်နိုင်ပါသည်! ${rolled} ထွက်ပါသည်။ ${winAmt} MMK အနိုင်ရသည်။`
+        : `ရှုံးပါသည်။ ${rolled} ထွက်သည်။`
+    );
+    console.log(`[Game] Wallet after: ${newWallet}. Result digit: ${rolled}. Last wins:`, [rolled, ...lastWins].slice(0, 3));
+  }
+
+  // User actions (extra debug logs)
+  function handleBetChange(val) {
+    setBet(val);
+    console.log("[User] Bet amount changed:", val);
+  }
+  function handlePick(val) {
+    setPick(val);
+    console.log("[User] Digit/category selected:", val);
+  }
+
+  // UI Rendering
+  return (
+    <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#0f172a] text-white font-inter flex flex-col items-center">
+      {/* Top Header Section */}
+      <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-800 rounded-lg shadow-md">
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">user name</div>
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm font-bold">Balance: ${wallet.toFixed(2)}</div>
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">log</div>
+      </div>
+      {/* Marquee */}
+      <style>{`
+        @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
+        .animate-marquee {animation: marquee 15s linear infinite;}
+      `}</style>
+      <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
+        <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
+          winner list text, jackpot text , etc .......
         </p>
       </div>
-
-      {/* Digit Spinner Display */}
-      <div className="mb-8 p-6 bg-gray-900 rounded-xl shadow-2xl flex items-center justify-center h-40 border border-gray-600 relative overflow-hidden">
-        {isSpinning ? (
-          <div className="text-8xl font-extrabold text-yellow-400 animate-pulse transition-transform duration-75 ease-in-out">
-            {spinAnimationDigit !== null ? spinAnimationDigit : '?'}
-          </div>
-        ) : (
-          <div className="text-8xl font-extrabold text-green-400 animate-fade-in">
-            {resultDigit !== null ? resultDigit : '?'}
-          </div>
+      {/* Jackpot Info */}
+      <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
+        <div className="text-lg font-bold text-teal-300">Jackpot Amount: ${jackpot.toFixed(2)}</div>
+        <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotTime}</div>
+      </div>
+      {/* Main Result Display */}
+      {/* <div className="my-8 w-60 h-60 bg-gray-900 rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-teal-500">
+        {result !== null ? result : '?'}
+        {cd > 0 && (
+          <p className="absolute bottom-4 text-base text-yellow-300">
+            Game start in: {cd}s
+          </p>
         )}
-        {/* Visual Effect အတွက် Simple Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-gray-900/50 to-transparent pointer-events-none"></div>
-      </div>
+      </div> */}
+      <div className="my-8 w-60 h-60 bg-gray-900 rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-teal-500">
+  {/* Show '?' only when result is null */}
+  {result !== null ? result : '?'}
+  {cd > 0 && (
+    <p className="absolute bottom-4 text-base text-yellow-300">
+      {betOpen
+        ? `Betting ends in: ${cd}s`
+        : `Game start in: ${cd}s`
+      }
+    </p>
+  )}
+</div>
 
+      {/* Betting Open Message */}
+      {betOpen && (
+        <p className="mb-4 text-green-400 text-lg animate-pulse">
+          💸 လောင်းကြေးတင်နိုင်ပါပြီ! 4 စက္ကန့်အတွင်း ထိုးပါ!
+        </p>
+      )}
       {/* Bet Amount Input */}
-      <div className="mb-6">
-        <label htmlFor="bet-amount" className="block text-gray-300 text-lg font-semibold mb-2">
-          လောင်းကြေးပမာဏ:
-        </label>
-        <input
-          id="bet-amount"
-          type="number"
-          min="1"
-          value={betAmount}
-          onChange={(e) => setBetAmount(Math.max(1, parseInt(e.target.value) || 0))}
-          className="w-full p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent text-xl text-center"
-          disabled={isSpinning}
-        />
+      <div className="w-full flex flex-col items-center mb-6">
+        <div className="flex items-center justify-center w-full max-w-sm">
+          <button
+            onClick={() => handleBetChange(Math.max(1, bet - 10))}
+            className="p-3 bg-gray-700 text-white rounded-l-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >-</button>
+          <input
+            type="number"
+            min="1"
+            value={bet}
+            onChange={e => handleBetChange(Math.max(1, parseInt(e.target.value) || 0))}
+            className="flex-grow p-3 bg-gray-700 text-white text-center font-bold text-xl border-l border-r border-gray-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            disabled={!betOpen}
+          />
+          <button
+            onClick={() => handleBetChange(bet + 10)}
+            className="p-3 bg-gray-700 text-white rounded-r-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >+</button>
+        </div>
       </div>
-
-      {/* Digit Selection Buttons */}
-      <div className="mb-8">
+      {/* Digit & Category Selection */}
+      <div className="w-full mb-8 max-w-xl">
         <h2 className="text-xl font-semibold text-gray-300 mb-3">သင်၏ ကံကောင်းသော ဂဏန်းကို ရွေးချယ်ပါ</h2>
-        <div className="grid grid-cols-5 gap-3">
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+        <div className="grid grid-cols-5 gap-3 mb-4">
+          {[...Array(10).keys()].map(d => (
             <button
-              key={digit}
-              onClick={() => setSelectedDigit(digit)}
-              className={`
-                p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md
-                ${selectedDigit === digit
+              key={d}
+              onClick={() => handlePick(d)}
+              className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+                typeof pick === 'number' && pick === d
                   ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
                   : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
-                }
-                ${isSpinning ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
-              disabled={isSpinning}
-            >
-              {digit}
-            </button>
+              } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!betOpen}
+            >{d}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <button
+            onClick={() => handlePick('small')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${pick === 'small' ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105' : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'} ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Small (0-4)</button>
+          <button
+            onClick={() => handlePick('big')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${pick === 'big' ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105' : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'} ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Big (5-9)</button>
+          <button
+            onClick={() => handlePick('odd')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${pick === 'odd' ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105' : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'} ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Odd</button>
+          <button
+            onClick={() => handlePick('even')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${pick === 'even' ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105' : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'} ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Even</button>
+        </div>
+      </div>
+      {/* Last Won Prize Numbers */}
+      <div className="w-full max-w-xs flex justify-center items-center gap-2 mb-6">
+        <p className="text-lg font-semibold text-gray-300">last won prize number</p>
+        <div className="flex space-x-1">
+          {lastWins.map((num, idx) => (
+            <span key={idx} className="w-8 h-8 flex items-center justify-center bg-black rounded-full text-white font-bold text-lg">{num}</span>
           ))}
         </div>
       </div>
-
-      {/* Spin Button */}
-      <button
-        onClick={handleSpin}
-        className="w-full bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white py-4 rounded-xl text-2xl font-bold transition-all duration-300 shadow-lg flex items-center justify-center gap-3
-                   transform hover:-translate-y-1 active:translate-y-0 active:scale-98 focus:outline-none focus:ring-4 focus:ring-teal-400"
-        disabled={isSpinning || selectedDigit === null || betAmount <= 0}
-      >
-        {isSpinning ? (
-          <>
-            <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            လှည့်နေသည်...
-          </>
-        ) : (
-          'Slot ကို လှည့်မည်!'
-        )}
-      </button>
-
-      {/* Messages Display */}
+      {/* Main Message */}
       {message && (
-        <p className={`mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in
-          ${message.includes('WON') ? 'bg-green-700 text-green-100 border border-green-600' :
-            message.includes('LOST') ? 'bg-red-700 text-red-100 border border-red-600' :
-            'bg-blue-700 text-blue-100 border border-blue-600'}
-        `}>
+        <p className="mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in bg-blue-700 text-blue-100 border border-blue-600">
           {message}
         </p>
       )}
-
-      {/* Current Bet Status */}
-      <div className="mt-8 text-sm text-gray-400">
-        <p className="mb-2">
-          <strong>လက်ရှိ လောင်းကြေး:</strong> {selectedDigit !== null ? `ဂဏန်း ${selectedDigit}` : 'မရှိသေးပါ'}
-        </p>
-        <p>
-          သင်၏ လောင်းကြေးပမာဏကို ထည့်ပြီး ဂဏန်း (0-9) တစ်ခုကို ရွေးချယ်ပါ၊ ထို့နောက် "Slot ကို လှည့်မည်!" ကို နှိပ်ပါ။
-        </p>
-      </div>
+      {/* Toast */}
+      {toast && <Toast message={toast.msg} type={toast.type} />}
     </div>
   );
 }
