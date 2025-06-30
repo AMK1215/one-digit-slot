@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Howl } from 'howler';
+import { Sparkles, Trophy } from 'lucide-react';
 
-// Constants (Traditional Myanmar logic)
+// RTP + Payouts
+const RTP_TARGET = 96.5;
+const RTP_WINDOW = 3.0;
 const PAYOUT_EXACT_DIGIT = 10;
 const PAYOUT_DIGIT_5 = 15;
 const PAYOUT_SMALL_BIG = 2;
@@ -12,14 +17,23 @@ const bigDigits = [6, 7, 8, 9];
 const evenDigits = [0, 2, 4, 6, 8];
 const oddDigits = [1, 3, 5, 7, 9];
 
-// Utility functions
+// --- Sound assets: use your own .mp3/.wav, or use open beep for demo ---
+const sfx = {
+  bet: new Howl({ src: ['/sounds/bet.mp3'], volume: 0.3 }),
+  win: new Howl({ src: ['/sounds/win.mp3'], volume: 0.3 }),
+  lose: new Howl({ src: ['/sounds/lose.mp3'], volume: 0.3 }),
+  streak: new Howl({ src: ['/sounds/streak.mp3'], volume: 0.4 }),
+  click: new Howl({ src: ['/sounds/click.mp3'], volume: 0.3 }),
+};
+// If you don't have your own sounds, you can use free sounds from https://freesound.org/
+// Or change to a default beep for demo: new Howl({ src: ['https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg'] })
+
 function formatTime(seconds) {
   const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
   const s = String(seconds % 60).padStart(2, '0');
   return `${h}:${m}:${s}`;
 }
-
 function calculateNextJackpot() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -40,22 +54,47 @@ function calculateNextJackpot() {
   }
   return nextTime;
 }
+function payoutFor(result, pickVal, bet) {
+  if (typeof pickVal === 'number' && result === pickVal) {
+    return (result === 5) ? bet * PAYOUT_DIGIT_5 : bet * PAYOUT_EXACT_DIGIT;
+  }
+  if (pickVal === 'small' && smallDigits.includes(result)) return bet * PAYOUT_SMALL_BIG;
+  if (pickVal === 'big' && bigDigits.includes(result)) return bet * PAYOUT_SMALL_BIG;
+  if (pickVal === 'middle' && result === 5) return bet * PAYOUT_DIGIT_5;
+  if (pickVal === 'even' && evenDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
+  if (pickVal === 'odd' && oddDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
+  return 0;
+}
 
-// Toast component for displaying notifications
+// Simple fake leaderboard data generator
+function getLeaderboard() {
+  const names = ['ကိုကို', 'မမ', 'ခင်ဗျာ', 'Nilar', 'MinMin', 'KoPyae', 'Myo', 'Aye', 'Pyae', 'Su', 'Hnin'];
+  return Array.from({ length: 5 }).map((_, i) => ({
+    name: names[Math.floor(Math.random() * names.length)],
+    amount: Math.floor(Math.random() * 9000 + 1000),
+    time: `${Math.floor(Math.random() * 23).toString().padStart(2, '0')}:${Math.floor(Math.random() * 59).toString().padStart(2, '0')}`,
+  }));
+}
+
 function Toast({ message, type }) {
   const bgColor =
     type === 'win' ? 'bg-green-500'
       : type === 'lose' ? 'bg-red-500'
         : 'bg-blue-500';
   return (
-    <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 transition-transform transform duration-300 ease-out animate-fade-in-down ${bgColor} text-white border border-white`}>
+    <motion.div
+      initial={{ y: -60, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -60, opacity: 0 }}
+      className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 ${bgColor} text-white border border-white text-lg`}
+    >
       <span>{message}</span>
-    </div>
+    </motion.div>
   );
 }
 
-function SlotRell() {
-  // State Variables
+export default function SlotRell() {
+  // State
   const [wallet, setWallet] = useState(1000);
   const [bet, setBet] = useState(10);
   const [pick, setPick] = useState(null);
@@ -68,36 +107,34 @@ function SlotRell() {
   const [lastWins, setLastWins] = useState([]);
   const [jackpot, setJackpot] = useState(5000);
   const [nextJackpotTime, setNextJackpotTime] = useState('');
+  const [totalBet, setTotalBet] = useState(0);
+  const [totalPaid, setTotalPaid] = useState(0);
+  // Leaderboard
+  const [leaderboard, setLeaderboard] = useState(getLeaderboard());
+  // Streak
+  const [winStreak, setWinStreak] = useState(0);
+  const [showStreak, setShowStreak] = useState(false);
 
-  // Timer Refs
+  // Refs for timeouts/state
   const cdRef = useRef(null);
   const jackpotRef = useRef(null);
-
-  // --- Ref to always access the latest pick value inside intervals ---
   const pickRef = useRef(pick);
   useEffect(() => { pickRef.current = pick; }, [pick]);
 
-  // Lifecycle useEffect for initial setup and cleanup
   useEffect(() => {
-    console.log("[useEffect] Component mounted, starting game loop and jackpot timer.");
     startGameLoop();
     updateJackpotCountdown();
     jackpotRef.current = setInterval(updateJackpotCountdown, 1000);
-
     return () => {
-      console.log("[useEffect] Cleaning up intervals on component unmount.");
       clearInterval(cdRef.current);
       clearInterval(jackpotRef.current);
     };
+    // eslint-disable-next-line
   }, []);
 
-  function showToast(msg, type = 'info') {
-    console.log(`[Toast] Displaying toast: Type=${type}, Message="${msg}"`);
+  function showToastFx(msg, type = 'info') {
     setToast({ msg, type });
-    setTimeout(() => {
-      setToast(null);
-      console.log("[Toast] Toast cleared.");
-    }, 4000);
+    setTimeout(() => setToast(null), 3500);
   }
 
   function updateJackpotCountdown() {
@@ -105,44 +142,35 @@ function SlotRell() {
     const now = new Date();
     const diff = Math.max(0, Math.floor((nextJackpotDate.getTime() - now.getTime()) / 1000));
     setNextJackpotTime(formatTime(diff));
-    // console.log(`[Jackpot] Next jackpot in: ${formatTime(diff)}`);
   }
 
   function startGameLoop() {
-    // console.log("[Game Cycle] Starting initial game loop.");
     runCountdown();
   }
 
   function runCountdown() {
-    console.log("[Countdown] Starting new round countdown sequence.");
     clearInterval(cdRef.current);
     setRunning(false);
     setBetOpen(false);
     setCd(5);
     setResult(null);
     setMessage('');
-    // Don't reset pick here! Let user keep their pick for next round if desired.
-
     let preCount = 5;
     cdRef.current = setInterval(() => {
       preCount--;
       setCd(preCount);
-      console.log(`[Countdown] Pre-betting: ${preCount}s remaining.`);
       if (preCount <= 0) {
         clearInterval(cdRef.current);
         setBetOpen(true);
         setCd(10);
-        console.log("[Countdown] Betting phase OPENED. 10 seconds for betting.");
         let betCount = 10;
         cdRef.current = setInterval(() => {
           betCount--;
           setCd(betCount);
-          console.log(`[Countdown] Betting: ${betCount}s remaining.`);
           if (betCount <= 0) {
             clearInterval(cdRef.current);
             setBetOpen(false);
             setCd(0);
-            console.log("[Countdown] Betting phase CLOSED. Initiating game run.");
             runGame();
           }
         }, 1000);
@@ -150,17 +178,16 @@ function SlotRell() {
     }, 1000);
   }
 
+  // --- Main Game Logic with RTP + Animation + Streaks ---
   function runGame() {
     const pickVal = pickRef.current;
-    console.log("[runGame] Game logic started. pickVal:", pickVal);
     setRunning(true);
     setMessage('');
-
     if (pickVal === null) {
       const msg = 'ကျေးဇူးပြု၍ ဂဏန်းတစ်ခု သို့မဟုတ် ကဏ္ဍတစ်ခုကို ရွေးချယ်ပါ။';
       setMessage(msg);
-      showToast('⚠️ ' + msg, 'info');
-      console.warn("[runGame] Validation failed: No digit/category picked.");
+      showToastFx('⚠️ ' + msg, 'info');
+      sfx.lose.play();
       setRunning(false);
       setTimeout(() => runCountdown(), 2000);
       return;
@@ -168,8 +195,8 @@ function SlotRell() {
     if (bet <= 0) {
       const msg = 'လောင်းကြေးပမာဏသည် သုညထက် ကြီးရပါမည်။';
       setMessage(msg);
-      showToast('⚠️ ' + msg, 'info');
-      console.warn("[runGame] Validation failed: Invalid bet amount.", bet);
+      showToastFx('⚠️ ' + msg, 'info');
+      sfx.lose.play();
       setRunning(false);
       setTimeout(() => runCountdown(), 2000);
       return;
@@ -177,100 +204,122 @@ function SlotRell() {
     if (bet > wallet) {
       const msg = 'သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။';
       setMessage(msg);
-      showToast('⛔ ' + msg, 'lose');
-      console.warn("[runGame] Validation failed: Insufficient balance.", wallet, bet);
+      showToastFx('⛔ ' + msg, 'lose');
+      sfx.lose.play();
       setRunning(false);
       setTimeout(() => runCountdown(), 2000);
       return;
     }
 
-    // Simulate rolling a random digit (0-9)
-    const rolled = Math.floor(Math.random() * 10);
-    let winAmt = 0;
-    let winStatus = 'lose';
-    let toastMsg = '';
+    // RTP
+    const curTotalBet = totalBet + bet;
+    const curTotalPaid = totalPaid;
+    const rtpNow = totalBet > 0 ? (totalPaid / totalBet) * 100 : 0;
+    // let rolled;
+    // if (Math.abs(rtpNow - RTP_TARGET) <= RTP_WINDOW) {
+    //   rolled = Math.floor(Math.random() * 10);
+    // } else if (rtpNow > RTP_TARGET + RTP_WINDOW) {
+    //   const loseResults = [];
+    //   for (let i = 0; i < 10; i++) {
+    //     if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
+    //   }
+    //   rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
+    // } else {
+    //   const winResults = [];
+    //   for (let i = 0; i < 10; i++) {
+    //     if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
+    //   }
+    //   rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
+    // }
 
-    console.log(`[runGame] Rolled number: ${rolled}. User picked: ${pickVal}. Bet: ${bet}. Wallet before: ${wallet}`);
+    let rolled;
+const pureRandom = Math.random();
+if (pureRandom < 0.90) {
+  // 90% chance: pure random spin (feels more natural)
+  rolled = Math.floor(Math.random() * 10);
+} else {
+  // 10% chance: RTP correction logic if needed
+  if (rtpNow > RTP_TARGET + RTP_WINDOW) {
+    // Too generous, force a loss
+    const loseResults = [];
+    for (let i = 0; i < 10; i++) {
+      if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
+    }
+    rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
+  } else if (rtpNow < RTP_TARGET - RTP_WINDOW) {
+    // Too tight, force a win
+    const winResults = [];
+    for (let i = 0; i < 10; i++) {
+      if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
+    }
+    rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
+  } else {
+    // Still within RTP target, just random
+    rolled = Math.floor(Math.random() * 10);
+  }
+}
 
-    if (typeof pickVal === 'number') {
-      if (pickVal === rolled) {
-        winStatus = 'win';
-        if (pickVal === 5) {
-          winAmt = bet * PAYOUT_DIGIT_5;
-          toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
-          console.log(`[runGame] WIN: Exact digit 5. Win Amount: ${winAmt}`);
-        } else {
-          winAmt = bet * PAYOUT_EXACT_DIGIT;
-          toastMsg = `🎉 သင်အနိုင်ရသည်! ဂဏန်း: ${rolled} ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
-          console.log(`[runGame] WIN: Exact digit ${rolled}. Win Amount: ${winAmt}`);
-        }
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked exact digit ${pickVal}, but rolled ${rolled}.`);
+
+
+    let winAmt = payoutFor(rolled, pickVal, bet);
+    let winStatus = winAmt > 0 ? 'win' : 'lose';
+
+    // --- Streak & Sound ---
+    let newStreak = winStatus === 'win' ? winStreak + 1 : 0;
+    setWinStreak(newStreak);
+    if (winStatus === 'win') {
+      sfx.win.play();
+      if (winAmt >= bet * 10) setTimeout(() => sfx.streak.play(), 300);
+      if (newStreak >= 2) {
+        setShowStreak(true);
+        setTimeout(() => setShowStreak(false), 1800);
       }
-    } else if (pickVal === 'small') {
-      if (smallDigits.includes(rolled)) {
-        winStatus = 'win';
-        winAmt = bet * PAYOUT_SMALL_BIG;
-        toastMsg = `🎉 သင်အနိုင်ရသည်! (Small: 0-4) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
-        console.log(`[runGame] WIN: Small. Rolled ${rolled}. Win Amount: ${winAmt}`);
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked Small, but rolled ${rolled}.`);
-      }
-    } else if (pickVal === 'big') {
-      if (bigDigits.includes(rolled)) {
-        winStatus = 'win';
-        winAmt = bet * PAYOUT_SMALL_BIG;
-        toastMsg = `🎉 သင်အနိုင်ရသည်! (Big: 6-9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
-        console.log(`[runGame] WIN: Big. Rolled ${rolled}. Win Amount: ${winAmt}`);
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked Big, but rolled ${rolled}.`);
-      }
-    } else if (pickVal === 'middle') {
-      if (rolled === 5) {
-        winStatus = 'win';
-        winAmt = bet * PAYOUT_DIGIT_5;
-        toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
-        console.log(`[runGame] WIN: Middle (5). Rolled ${rolled}. Win Amount: ${winAmt}`);
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked Middle, but rolled ${rolled}.`);
-      }
-    } else if (pickVal === 'even') {
-      if (evenDigits.includes(rolled)) {
-        winStatus = 'win';
-        winAmt = bet * PAYOUT_ODD_EVEN;
-        toastMsg = `🎉 သင်အနိုင်ရသည်! (Even: 0,2,4,6,8) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
-        console.log(`[runGame] WIN: Even. Rolled ${rolled}. Win Amount: ${winAmt}`);
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked Even, but rolled ${rolled}.`);
-      }
-    } else if (pickVal === 'odd') {
-      if (oddDigits.includes(rolled)) {
-        winStatus = 'win';
-        winAmt = bet * PAYOUT_ODD_EVEN;
-        toastMsg = `🎉 သင်အနိုင်ရသည်! (Odd: 1,3,5,7,9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
-        console.log(`[runGame] WIN: Odd. Rolled ${rolled}. Win Amount: ${winAmt}`);
-      } else {
-        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
-        console.log(`[runGame] LOSE: Picked Odd, but rolled ${rolled}.`);
-      }
+    } else {
+      sfx.lose.play();
+      setShowStreak(false);
     }
 
-    const newWallet = winStatus === 'win' ? wallet - bet + winAmt : wallet - bet;
-    setWallet(newWallet);
+    // --- Message Toast ---
+    let toastMsg = '';
+    if (typeof pickVal === 'number') {
+      if (pickVal === rolled) {
+        toastMsg = pickVal === 5
+          ? `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`
+          : `🎉 သင်အနိုင်ရသည်! ဂဏန်း: ${rolled} ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
+      } else toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    } else if (pickVal === 'small') {
+      toastMsg = smallDigits.includes(rolled)
+        ? `🎉 သင်အနိုင်ရသည်! (Small: 0-4) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`
+        : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    } else if (pickVal === 'big') {
+      toastMsg = bigDigits.includes(rolled)
+        ? `🎉 သင်အနိုင်ရသည်! (Big: 6-9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`
+        : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    } else if (pickVal === 'middle') {
+      toastMsg = rolled === 5
+        ? `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`
+        : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    } else if (pickVal === 'even') {
+      toastMsg = evenDigits.includes(rolled)
+        ? `🎉 သင်အနိုင်ရသည်! (Even: 0,2,4,6,8) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`
+        : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    } else if (pickVal === 'odd') {
+      toastMsg = oddDigits.includes(rolled)
+        ? `🎉 သင်အနိုင်ရသည်! (Odd: 1,3,5,7,9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`
+        : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+    }
+
+    setWallet(prev => winStatus === 'win' ? prev - bet + winAmt : prev - bet);
     setResult(rolled);
-    setLastWins(prev => [rolled, ...prev.slice(0, 2)]);
-    showToast(toastMsg, winStatus);
+    setLastWins(prev => [rolled, ...prev.slice(0, 4)]);
+    setTotalBet(prev => prev + bet);
+    setTotalPaid(prev => prev + (winStatus === 'win' ? winAmt : 0));
+    showToastFx(toastMsg, winStatus);
     setMessage(
       winStatus === 'win'
         ? `သင်နိုင်ပါသည်! ${rolled} ထွက်ပါသည်။ ${winAmt} MMK အနိုင်ရသည်။`
         : `ရှုံးပါသည်။ ${rolled} ထွက်သည်။`
     );
-    console.log(`[runGame] Wallet after: ${newWallet}. Result digit: ${rolled}. Last wins:`, [rolled, ...lastWins.slice(0, 2)]);
 
     setTimeout(() => {
       setRunning(false);
@@ -280,48 +329,120 @@ function SlotRell() {
 
   function handleBetChange(val) {
     setBet(val);
-    console.log(`[User Action] Bet amount changed to: ${val}`);
+    sfx.click.play();
   }
   function handlePick(val) {
     setPick(val);
-    console.log(`[User Action] Pick changed to: ${val}`);
+    sfx.bet.play();
   }
 
-  // --- UI ---
+  const rtp = totalBet > 0 ? ((totalPaid / totalBet) * 100).toFixed(2) : "---";
+
   return (
-    <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#0f172a] text-white font-inter flex flex-col items-center">
-      <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-800 rounded-lg shadow-md">
-        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">user name</div>
-        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm font-bold">Balance: ${wallet.toFixed(2)}</div>
-        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">log</div>
+    <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
+      <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-900 rounded-lg shadow-md">
+        <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">User Name</div>
+        <div className="px-3 py-1 bg-[#0ea5e9] rounded-md text-sm font-bold shadow border-2 border-cyan-400">Balance: <span className="font-extrabold">{wallet.toFixed(2)}</span> MMK</div>
+        <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">Log</div>
       </div>
+
+      {/* Leaderboard */}
+      <div className="w-full flex flex-col items-center mb-2">
+        <div className="flex items-center gap-2 mb-2">
+          <Trophy className="text-yellow-300" size={28} />
+          <span className="font-bold text-yellow-200 text-lg">Leaderboard</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 w-full max-w-xl bg-gray-800 p-2 rounded-xl shadow-inner text-sm">
+          {leaderboard.map((entry, i) => (
+            <div key={i} className="flex flex-col items-center py-2">
+              <span className="font-bold text-cyan-400">{entry.name}</span>
+              <span className="text-yellow-300">{entry.amount} MMK</span>
+              <span className="text-gray-400">{entry.time}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Marquee */}
       <style>{`
         @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
         .animate-marquee {animation: marquee 15s linear infinite;}
       `}</style>
       <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
         <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
-          winner list text, jackpot text , etc .......
+          🎉 သာမန်ကစားသမားများ: အနည်းဆုံးလောင်းကြေး 10 MMK | RTP: {rtp}% | ယနေ့ Jackpot: {jackpot} MMK
         </p>
       </div>
+      {/* Jackpot */}
       <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
-        <div className="text-lg font-bold text-teal-300">Jackpot Amount: ${jackpot.toFixed(2)}</div>
+        <div className="text-lg font-bold text-teal-300">Jackpot: {jackpot.toLocaleString()} MMK</div>
         <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotTime}</div>
       </div>
-      <div className="my-8 w-60 h-60 bg-gray-900 rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-teal-500">
-        {result !== null ? result : '?'}
-        {cd > 0 && (
-          <p className="absolute bottom-4 text-base text-yellow-300">
-            {betOpen
-              ? `Betting ends in: ${cd}s`
-              : `Game start in: ${cd}s`
-            }
-          </p>
-        )}
+      {/* RTP display for admin/testing */}
+      <div className="w-full flex justify-around items-center my-2 p-2 bg-gray-700 rounded-lg shadow-md">
+        <div className="text-base text-green-300">Total Bet: {totalBet} MMK</div>
+        <div className="text-base text-pink-300">Total Paid: {totalPaid} MMK</div>
+        <div className="text-base text-yellow-300 font-bold">RTP: {rtp}%</div>
       </div>
+
+      {/* Streak Celebration */}
+      <AnimatePresence>
+        {showStreak && (
+          <motion.div
+            initial={{ y: -70, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed left-1/2 top-16 -translate-x-1/2 bg-yellow-400 text-black px-8 py-3 rounded-full font-bold text-xl z-50 shadow-2xl flex items-center gap-2 border-4 border-yellow-200"
+          >
+            <Sparkles size={32} className="text-pink-500 animate-bounce" />
+            <span>🔥 Win Streak x{winStreak}!</span>
+            <Sparkles size={32} className="text-blue-500 animate-bounce" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Result Digit */}
+     
+
+<div className="my-8 w-64 h-64 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-cyan-500 border-dashed">
+  <AnimatePresence mode="wait">
+    <motion.div
+      key={result !== null ? result : "question"}
+      initial={{ scale: 0.3, opacity: 0, rotate: 0 }}
+      animate={{ scale: 1.2, opacity: 1, rotate: [0, 15, -15, 0] }}
+      exit={{ scale: 0.2, opacity: 0, rotate: 0 }}
+      transition={{
+        scale: { type: "spring", stiffness: 300, damping: 16 },
+        rotate: { type: "tween", duration: 0.6 },
+      }}
+      className="flex flex-col items-center justify-center w-full h-full"
+    >
+      <span className="text-7xl font-extrabold text-green-400 drop-shadow-2xl">
+        {result !== null ? result : '?'}
+      </span>
+    </motion.div>
+  </AnimatePresence>
+  {cd > 0 && (
+    <motion.p
+      className="absolute bottom-4 text-base text-yellow-300"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      {betOpen ? `Betting ends in: ${cd}s` : `Game start in: ${cd}s`}
+    </motion.p>
+  )}
+</div>
+
+      {/* Bet Open message */}
       {betOpen && (
-        <p className="mb-4 text-green-400 text-lg animate-pulse">💸 လောင်းကြေးတင်နိုင်ပါပြီ! {cd} စက္ကန့်အတွင်း ထိုးပါ!</p>
+        <motion.p
+          className="mb-4 text-green-400 text-lg animate-pulse"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >💸 လောင်းကြေးတင်နိုင်ပါပြီ! {cd} စက္ကန့်အတွင်း ထိုးပါ!</motion.p>
       )}
+
+      {/* Bet Controls */}
       <div className="w-full flex flex-col items-center mb-6">
         <div className="flex items-center justify-center w-full max-w-sm">
           <button
@@ -344,6 +465,8 @@ function SlotRell() {
           >+</button>
         </div>
       </div>
+
+      {/* Digits and Group Buttons */}
       <div className="w-full mb-8 max-w-xl">
         <h2 className="text-xl font-semibold text-gray-300 mb-3">သင်၏ ကံကောင်းသော ဂဏန်းကို ရွေးချယ်ပါ</h2>
         <div className="grid grid-cols-5 gap-3 mb-4">
@@ -353,8 +476,8 @@ function SlotRell() {
               onClick={() => handlePick(d)}
               className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
                 typeof pick === 'number' && pick === d
-                  ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                  : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                  ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                  : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
               } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={!betOpen}
             >{d}</button>
@@ -365,8 +488,8 @@ function SlotRell() {
             onClick={() => handlePick('small')}
             className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
               pick === 'small'
-                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
             } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!betOpen}
           >Small (0-4)</button>
@@ -374,8 +497,8 @@ function SlotRell() {
             onClick={() => handlePick('middle')}
             className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
               pick === 'middle'
-                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
             } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!betOpen}
           >Middle (5)</button>
@@ -383,8 +506,8 @@ function SlotRell() {
             onClick={() => handlePick('big')}
             className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
               pick === 'big'
-                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
             } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!betOpen}
           >Big (6-9)</button>
@@ -394,8 +517,8 @@ function SlotRell() {
             onClick={() => handlePick('even')}
             className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
               pick === 'even'
-                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
             } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!betOpen}
           >Even (0,2,4,6,8)</button>
@@ -403,13 +526,15 @@ function SlotRell() {
             onClick={() => handlePick('odd')}
             className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
               pick === 'odd'
-                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
             } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!betOpen}
           >Odd (1,3,5,7,9)</button>
         </div>
       </div>
+
+      {/* Last Wins */}
       <div className="w-full max-w-xs flex justify-center items-center gap-2 mb-6">
         <p className="text-lg font-semibold text-gray-300">last won prize number</p>
         <div className="flex space-x-1">
@@ -419,13 +544,15 @@ function SlotRell() {
         </div>
       </div>
       {message && (
-        <p className="mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in bg-blue-700 text-blue-100 border border-blue-600">
-          {message}
-        </p>
+        <motion.p
+          className="mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in bg-blue-700 text-blue-100 border border-blue-600"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >{message}</motion.p>
       )}
-      {toast && <Toast message={toast.msg} type={toast.type} />}
+      <AnimatePresence>
+        {toast && <Toast message={toast.msg} type={toast.type} />}
+      </AnimatePresence>
     </div>
   );
 }
-
-export default SlotRell;

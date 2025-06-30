@@ -1,39 +1,49 @@
-import SlotRell from './components/SlotRell'; // SlotRell.jsx သည် src/components တွင်ရှိသည်ဟု ယူဆသည်
-import JackPot from './components/JackPot';   // JackPot.jsx သည် src/components တွင်ရှိသည်ဟု ယူဆသည်
+import { useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import SlotRell from './components/SlotRell';
+import JackPot from './components/JackPot';
+import { AuthContext } from './contexts/AuthContext';
+import Header from './components/Header';
 
 // ဤသည်မှာ ဂိမ်းနှစ်ခုလုံးကို ပြသမည့် အဓိက Application Component ဖြစ်သည်။
 function App() {
+  const { user } = useContext(AuthContext);
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-400 mx-auto mb-4"></div>
+          <p>Loading game...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-inter p-4">
-      {/* <header className="text-center py-8 bg-gray-800 rounded-b-2xl shadow-md mb-8">
-        <h1 className="text-5xl font-extrabold text-blue-400 drop-shadow-lg">
-          My Awesome Betting Platform
-        </h1>
-        <p className="text-xl text-gray-300 mt-2">
-          Place your bets and chase the Jackpot!
-        </p>
-      </header> */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Header */}
+      <Header />
+      {/* Main content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Slot Game */}
+          <section className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6">
+            <SlotRell />
+          </section>
 
-      <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-        {/* Slot Game ကဏ္ဍ */}
-        <section className="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
-          {/* <h2 className="text-3xl font-bold text-teal-400 mb-6 text-center">
-            🎰 One-Digit Slot Game
-          </h2> */}
-          <SlotRell /> {/* SlotRell Component ကို ပြသသည် */}
-        </section>
-
-        {/* Jackpot Game ကဏ္ဍ */}
-        <section className="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
-          <h4 className="text-3xl font-bold text-pink-400 mb-6 text-center">
-            💰 OneDigitSlo Jackpot
-          </h4>
-          <JackPot /> {/* JackPot Component ကို ပြသသည် */}
-        </section>
+          {/* Jackpot Game */}
+          <section className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6">
+            <h4 className="text-3xl font-bold text-pink-400 mb-6 text-center">
+              💰 OneDigitSlo Jackpot
+            </h4>
+            <JackPot />
+          </section>
+        </div>
       </main>
-
-      <footer className="text-center text-gray-500 text-sm mt-12 py-4">
-        &copy; {new Date().getFullYear()} My Betting Platform. All rights reserved.
+      {/* Footer */}
+      <footer className="text-center text-gray-400 text-sm py-6 border-t border-white/10">
+        &copy; {new Date().getFullYear()} SlotRell Gaming Platform. All rights reserved.
       </footer>
     </div>
   );

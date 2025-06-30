@@ -1,0 +1,438 @@
+import { useState, useEffect, useRef } from 'react';
+
+// RTP Settings
+const RTP_TARGET = 96.5; // Your target payout percent (e.g. 96.5%)
+const RTP_WINDOW = 3.0;  // Allowed drift (±3%) for "real randomness" experience
+
+const PAYOUT_EXACT_DIGIT = 10;
+const PAYOUT_DIGIT_5 = 15;
+const PAYOUT_SMALL_BIG = 2;
+const PAYOUT_ODD_EVEN = 2;
+const JACKPOT_TIMES = ['10:00', '13:00', '21:00'];
+
+const smallDigits = [0, 1, 2, 3, 4];
+const bigDigits = [6, 7, 8, 9];
+const evenDigits = [0, 2, 4, 6, 8];
+const oddDigits = [1, 3, 5, 7, 9];
+
+function formatTime(seconds) {
+  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function calculateNextJackpot() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let nextTime = null;
+  for (const timeStr of JACKPOT_TIMES) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes, 0);
+    if (targetDate > now) {
+      nextTime = targetDate;
+      break;
+    }
+  }
+  if (!nextTime) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const [hours, minutes] = JACKPOT_TIMES[0].split(':').map(Number);
+    nextTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), hours, minutes, 0);
+  }
+  return nextTime;
+}
+
+// Toast component for displaying notifications
+function Toast({ message, type }) {
+  const bgColor =
+    type === 'win' ? 'bg-green-500'
+      : type === 'lose' ? 'bg-red-500'
+        : 'bg-blue-500';
+  return (
+    <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 transition-transform transform duration-300 ease-out animate-fade-in-down ${bgColor} text-white border border-white`}>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+// Helper to calculate payout for any result and pick
+function payoutFor(result, pickVal, bet) {
+  if (typeof pickVal === 'number' && result === pickVal) {
+    return (result === 5) ? bet * PAYOUT_DIGIT_5 : bet * PAYOUT_EXACT_DIGIT;
+  }
+  if (pickVal === 'small' && smallDigits.includes(result)) return bet * PAYOUT_SMALL_BIG;
+  if (pickVal === 'big' && bigDigits.includes(result)) return bet * PAYOUT_SMALL_BIG;
+  if (pickVal === 'middle' && result === 5) return bet * PAYOUT_DIGIT_5;
+  if (pickVal === 'even' && evenDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
+  if (pickVal === 'odd' && oddDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
+  return 0;
+}
+
+function SlotRell() {
+  // State Variables
+  const [wallet, setWallet] = useState(1000);
+  const [bet, setBet] = useState(10);
+  const [pick, setPick] = useState(null);
+  const [result, setResult] = useState(null);
+  const [message, setMessage] = useState('');
+  const [cd, setCd] = useState(5);
+  const [betOpen, setBetOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [lastWins, setLastWins] = useState([]);
+  const [jackpot, setJackpot] = useState(5000);
+  const [nextJackpotTime, setNextJackpotTime] = useState('');
+  // RTP tracking
+  const [totalBet, setTotalBet] = useState(0);
+  const [totalPaid, setTotalPaid] = useState(0);
+
+  // Timer Refs
+  const cdRef = useRef(null);
+  const jackpotRef = useRef(null);
+  // Keep up-to-date pick and totals inside timeouts
+  const pickRef = useRef(pick);
+  const totalBetRef = useRef(totalBet);
+  const totalPaidRef = useRef(totalPaid);
+  useEffect(() => { pickRef.current = pick; }, [pick]);
+  useEffect(() => { totalBetRef.current = totalBet; }, [totalBet]);
+  useEffect(() => { totalPaidRef.current = totalPaid; }, [totalPaid]);
+
+  useEffect(() => {
+    startGameLoop();
+    updateJackpotCountdown();
+    jackpotRef.current = setInterval(updateJackpotCountdown, 1000);
+    return () => {
+      clearInterval(cdRef.current);
+      clearInterval(jackpotRef.current);
+    };
+    // eslint-disable-next-line
+  }, []);
+
+  function showToast(msg, type = 'info') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  function updateJackpotCountdown() {
+    const nextJackpotDate = calculateNextJackpot();
+    const now = new Date();
+    const diff = Math.max(0, Math.floor((nextJackpotDate.getTime() - now.getTime()) / 1000));
+    setNextJackpotTime(formatTime(diff));
+  }
+
+  function startGameLoop() {
+    runCountdown();
+  }
+
+  function runCountdown() {
+    clearInterval(cdRef.current);
+    setRunning(false);
+    setBetOpen(false);
+    setCd(5);
+    setResult(null);
+    setMessage('');
+    // let user keep their pick
+    let preCount = 5;
+    cdRef.current = setInterval(() => {
+      preCount--;
+      setCd(preCount);
+      if (preCount <= 0) {
+        clearInterval(cdRef.current);
+        setBetOpen(true);
+        setCd(10);
+        let betCount = 10;
+        cdRef.current = setInterval(() => {
+          betCount--;
+          setCd(betCount);
+          if (betCount <= 0) {
+            clearInterval(cdRef.current);
+            setBetOpen(false);
+            setCd(0);
+            runGame();
+          }
+        }, 1000);
+      }
+    }, 1000);
+  }
+
+  function runGame() {
+    const pickVal = pickRef.current;
+    setRunning(true);
+    setMessage('');
+    if (pickVal === null) {
+      const msg = 'ကျေးဇူးပြု၍ ဂဏန်းတစ်ခု သို့မဟုတ် ကဏ္ဍတစ်ခုကို ရွေးချယ်ပါ။';
+      setMessage(msg);
+      showToast('⚠️ ' + msg, 'info');
+      setRunning(false);
+      setTimeout(() => runCountdown(), 2000);
+      return;
+    }
+    if (bet <= 0) {
+      const msg = 'လောင်းကြေးပမာဏသည် သုညထက် ကြီးရပါမည်။';
+      setMessage(msg);
+      showToast('⚠️ ' + msg, 'info');
+      setRunning(false);
+      setTimeout(() => runCountdown(), 2000);
+      return;
+    }
+    if (bet > wallet) {
+      const msg = 'သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။';
+      setMessage(msg);
+      showToast('⛔ ' + msg, 'lose');
+      setRunning(false);
+      setTimeout(() => runCountdown(), 2000);
+      return;
+    }
+
+    // RTP LOGIC
+    const possibleResults = [...Array(10).keys()];
+    const curTotalBet = totalBetRef.current;
+    const curTotalPaid = totalPaidRef.current;
+    const newTotalBet = curTotalBet + bet;
+    const rtpNow = curTotalBet > 0 ? (curTotalPaid / curTotalBet) * 100 : 0;
+    let rolled;
+
+    if (Math.abs(rtpNow - RTP_TARGET) <= RTP_WINDOW) {
+      // Inside the allowed RTP window: random!
+      rolled = Math.floor(Math.random() * 10);
+      console.log(`[RTP] Inside window (${RTP_TARGET}% ±${RTP_WINDOW}%). Random roll: ${rolled}`);
+    } else if (rtpNow > RTP_TARGET + RTP_WINDOW) {
+      // Too much payout: favor a lose
+      const loseResults = [];
+      for (let i = 0; i < 10; i++) {
+        if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
+      }
+      rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
+      console.log(`[RTP] Above window (${rtpNow}%). Forcing lose. Rolled: ${rolled}`);
+    } else {
+      // Too little payout: favor a win
+      const winResults = [];
+      for (let i = 0; i < 10; i++) {
+        if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
+      }
+      rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
+      console.log(`[RTP] Below window (${rtpNow}%). Forcing win. Rolled: ${rolled}`);
+    }
+
+    // Now compute win status and payout
+    let winAmt = payoutFor(rolled, pickVal, bet);
+    let winStatus = winAmt > 0 ? 'win' : 'lose';
+    let toastMsg = '';
+    if (typeof pickVal === 'number') {
+      if (pickVal === rolled) {
+        if (pickVal === 5) {
+          toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
+        } else {
+          toastMsg = `🎉 သင်အနိုင်ရသည်! ဂဏန်း: ${rolled} ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
+        }
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    } else if (pickVal === 'small') {
+      if (smallDigits.includes(rolled)) {
+        toastMsg = `🎉 သင်အနိုင်ရသည်! (Small: 0-4) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    } else if (pickVal === 'big') {
+      if (bigDigits.includes(rolled)) {
+        toastMsg = `🎉 သင်အနိုင်ရသည်! (Big: 6-9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    } else if (pickVal === 'middle') {
+      if (rolled === 5) {
+        toastMsg = `🎉 သင်အနိုင်ရသည်! Middle Digit 5 ထွက်! ${winAmt} MMK အနိုင်ရသည်။`;
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    } else if (pickVal === 'even') {
+      if (evenDigits.includes(rolled)) {
+        toastMsg = `🎉 သင်အနိုင်ရသည်! (Even: 0,2,4,6,8) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    } else if (pickVal === 'odd') {
+      if (oddDigits.includes(rolled)) {
+        toastMsg = `🎉 သင်အနိုင်ရသည်! (Odd: 1,3,5,7,9) ထွက်လာသော ဂဏန်း: ${rolled}. ${winAmt} MMK အနိုင်ရသည်။`;
+      } else {
+        toastMsg = `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
+      }
+    }
+
+    setWallet(prev => winStatus === 'win' ? prev - bet + winAmt : prev - bet);
+    setResult(rolled);
+    setLastWins(prev => [rolled, ...prev.slice(0, 2)]);
+    setTotalBet(prev => prev + bet);
+    setTotalPaid(prev => prev + (winStatus === 'win' ? winAmt : 0));
+    showToast(toastMsg, winStatus);
+    setMessage(
+      winStatus === 'win'
+        ? `သင်နိုင်ပါသည်! ${rolled} ထွက်ပါသည်။ ${winAmt} MMK အနိုင်ရသည်။`
+        : `ရှုံးပါသည်။ ${rolled} ထွက်သည်။`
+    );
+
+    setTimeout(() => {
+      setRunning(false);
+      runCountdown();
+    }, 2000);
+  }
+
+  function handleBetChange(val) {
+    setBet(val);
+  }
+  function handlePick(val) {
+    setPick(val);
+  }
+
+  // RTP calculation for display
+  const rtp = totalBet > 0 ? ((totalPaid / totalBet) * 100).toFixed(2) : "---";
+
+  return (
+    <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#0f172a] text-white font-inter flex flex-col items-center">
+      <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-800 rounded-lg shadow-md">
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">user name</div>
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm font-bold">Balance: ${wallet.toFixed(2)}</div>
+        <div className="px-3 py-1 bg-gray-700 rounded-md text-sm">log</div>
+      </div>
+      <style>{`
+        @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
+        .animate-marquee {animation: marquee 15s linear infinite;}
+      `}</style>
+      <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
+        <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
+          winner list text, jackpot text , etc .......
+        </p>
+      </div>
+      <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
+        <div className="text-lg font-bold text-teal-300">Jackpot Amount: ${jackpot.toFixed(2)}</div>
+        <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotTime}</div>
+      </div>
+      {/* RTP block for admin (optional, you can hide this if you want) */}
+      <div className="w-full flex justify-around items-center my-2 p-2 bg-gray-700 rounded-lg shadow-md">
+        <div className="text-base text-green-300">Total Bet: {totalBet} MMK</div>
+        <div className="text-base text-pink-300">Total Paid: {totalPaid} MMK</div>
+        <div className="text-base text-yellow-300 font-bold">RTP: {rtp}%</div>
+      </div>
+      <div className="my-8 w-60 h-60 bg-gray-900 rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-teal-500">
+        {result !== null ? result : '?'}
+        {cd > 0 && (
+          <p className="absolute bottom-4 text-base text-yellow-300">
+            {betOpen
+              ? `Betting ends in: ${cd}s`
+              : `Game start in: ${cd}s`
+            }
+          </p>
+        )}
+      </div>
+      {betOpen && (
+        <p className="mb-4 text-green-400 text-lg animate-pulse">💸 လောင်းကြေးတင်နိုင်ပါပြီ! {cd} စက္ကန့်အတွင်း ထိုးပါ!</p>
+      )}
+      <div className="w-full flex flex-col items-center mb-6">
+        <div className="flex items-center justify-center w-full max-w-sm">
+          <button
+            onClick={() => handleBetChange(Math.max(1, bet - 10))}
+            className="p-3 bg-gray-700 text-white rounded-l-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >-</button>
+          <input
+            type="number"
+            min="1"
+            value={bet}
+            onChange={e => handleBetChange(Math.max(1, parseInt(e.target.value) || 0))}
+            className="flex-grow p-3 bg-gray-700 text-white text-center font-bold text-xl border-l border-r border-gray-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            disabled={!betOpen}
+          />
+          <button
+            onClick={() => handleBetChange(bet + 10)}
+            className="p-3 bg-gray-700 text-white rounded-r-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >+</button>
+        </div>
+      </div>
+      <div className="w-full mb-8 max-w-xl">
+        <h2 className="text-xl font-semibold text-gray-300 mb-3">သင်၏ ကံကောင်းသော ဂဏန်းကို ရွေးချယ်ပါ</h2>
+        <div className="grid grid-cols-5 gap-3 mb-4">
+          {[...Array(10).keys()].map(d => (
+            <button
+              key={d}
+              onClick={() => handlePick(d)}
+              className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+                typeof pick === 'number' && pick === d
+                  ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                  : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+              } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!betOpen}
+            >{d}</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <button
+            onClick={() => handlePick('small')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+              pick === 'small'
+                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Small (0-4)</button>
+          <button
+            onClick={() => handlePick('middle')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+              pick === 'middle'
+                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Middle (5)</button>
+          <button
+            onClick={() => handlePick('big')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+              pick === 'big'
+                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Big (6-9)</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <button
+            onClick={() => handlePick('even')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+              pick === 'even'
+                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Even (0,2,4,6,8)</button>
+          <button
+            onClick={() => handlePick('odd')}
+            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
+              pick === 'odd'
+                ? 'bg-teal-600 text-white ring-4 ring-teal-300 scale-105'
+                : 'bg-gray-700 text-gray-200 hover:bg-teal-500 hover:text-white border border-gray-600'
+            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!betOpen}
+          >Odd (1,3,5,7,9)</button>
+        </div>
+      </div>
+      <div className="w-full max-w-xs flex justify-center items-center gap-2 mb-6">
+        <p className="text-lg font-semibold text-gray-300">last won prize number</p>
+        <div className="flex space-x-1">
+          {lastWins.map((num, idx) => (
+            <span key={idx} className="w-8 h-8 flex items-center justify-center bg-black rounded-full text-white font-bold text-lg">{num}</span>
+          ))}
+        </div>
+      </div>
+      {message && (
+        <p className="mt-6 text-lg font-semibold p-4 rounded-xl shadow-md animate-fade-in bg-blue-700 text-blue-100 border border-blue-600">
+          {message}
+        </p>
+      )}
+      {toast && <Toast message={toast.msg} type={toast.type} />}
+    </div>
+  );
+}
+
+export default SlotRell;
