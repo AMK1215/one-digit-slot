@@ -1,4 +1,5 @@
 import React from 'react';
+import Header from '../components/Header';
 
 const mockLogs = [
   { date: '2024-06-01', game: 'Pragmatic Play', bet: 100, result: '+200' },
@@ -10,6 +11,7 @@ const mockLogs = [
 function GameLog() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center px-4 py-12">
+      <Header />
       <div className="bg-black/80 rounded-2xl shadow-2xl p-8 max-w-2xl w-full">
         <h2 className="text-3xl font-bold text-yellow-400 mb-6 text-center">Game Log</h2>
         <div className="overflow-x-auto">

@@ -1,4 +1,5 @@
 import React from 'react';
+import Header from '../components/Header';
 
 const promotions = [
   { title: 'Welcome Bonus', desc: 'Get 100% bonus on your first deposit!', image: null },
@@ -9,6 +10,7 @@ const promotions = [
 function Promotion() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center px-4 py-12">
+      <Header />
       <div className="max-w-3xl w-full">
         <h2 className="text-3xl font-bold text-yellow-400 mb-8 text-center">Promotions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
