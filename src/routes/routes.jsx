@@ -11,6 +11,7 @@ import Wallet from '../pages/Wallet';
 import GameLog from '../pages/GameLog';
 import Promotion from '../pages/Promotion';
 import Ads from '../pages/Ads';
+import GameListPage from '../pages/GameListPage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -33,6 +34,14 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <AuthContextProvider>
+        <Homepage />
+      </AuthContextProvider>
+    ),
+  },
+  {
+    path: '/login',
+    element: (
+      <AuthContextProvider>
         <PublicRoute>
           <Login />
         </PublicRoute>
@@ -41,13 +50,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/home',
-    element: (
-      <AuthContextProvider>
-        <ProtectedRoute>
-          <Homepage />
-        </ProtectedRoute>
-      </AuthContextProvider>
-    ),
+    element: <Navigate to="/" replace />,
   },
   {
     path: '/game',
@@ -116,6 +119,14 @@ export const router = createBrowserRouter([
         <ProtectedRoute>
           <Ads />
         </ProtectedRoute>
+      </AuthContextProvider>
+    ),
+  },
+  {
+    path: '/games/:gameTypeId/:productId',
+    element: (
+      <AuthContextProvider>
+        <GameListPage />
       </AuthContextProvider>
     ),
   },

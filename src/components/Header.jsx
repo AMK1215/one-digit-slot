@@ -34,7 +34,7 @@ function Header() {
           <img src={logoImg} alt="Logo" className="w-9 h-9 rounded-full object-cover border-2 border-white/30 shadow" />
         </div>
         {/* User Info - always visible, responsive */}
-        {user && (
+        {user ? (
           <div className="flex flex-col xs:flex-row items-end xs:items-center gap-0 xs:gap-4 text-white text-xs xs:text-sm font-semibold flex-1 justify-center">
             <div className="flex items-center gap-2">
               <span className="font-bold xs:text-base text-sm truncate max-w-[100px] xs:max-w-[160px]" title={user.name}>{user.name}</span>
@@ -56,6 +56,13 @@ function Header() {
               <span>Game: <span className="text-pink-300">${parseFloat(user.game_balance ?? user.balance ?? 0).toLocaleString()}</span></span>
             </div>
           </div>
+        ) : (
+          <button
+            onClick={() => navigate('/login')}
+            className="ml-4 px-5 py-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold shadow hover:from-yellow-300 hover:to-yellow-400 transition-all duration-200"
+          >
+            Login
+          </button>
         )}
         {/* Hamburger Menu Button */}
         <button
