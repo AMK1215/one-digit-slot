@@ -1,10 +1,12 @@
+// src/pages/SlotRell.jsx
+
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Howl } from 'howler';
 import { Sparkles, Trophy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-// RTP + Payouts
+// --- Constants ---
 const RTP_TARGET = 96.5;
 const RTP_WINDOW = 3.0;
 const PAYOUT_EXACT_DIGIT = 10;
@@ -12,23 +14,20 @@ const PAYOUT_DIGIT_5 = 15;
 const PAYOUT_SMALL_BIG = 2;
 const PAYOUT_ODD_EVEN = 2;
 const JACKPOT_TIMES = ['10:00', '13:00', '21:00'];
-
 const smallDigits = [0, 1, 2, 3, 4];
 const bigDigits = [6, 7, 8, 9];
 const evenDigits = [0, 2, 4, 6, 8];
 const oddDigits = [1, 3, 5, 7, 9];
 
-// --- Sound assets: use your own .mp3/.wav, or use open beep for demo ---
 const sfx = {
-  bet: new Howl({ src: ['/sounds/bet.mp3'], volume: 0.3 }),
-  win: new Howl({ src: ['/sounds/win.mp3'], volume: 0.3 }),
-  lose: new Howl({ src: ['/sounds/lose.mp3'], volume: 0.3 }),
-  streak: new Howl({ src: ['/sounds/streak.mp3'], volume: 0.4 }),
-  click: new Howl({ src: ['/sounds/click.mp3'], volume: 0.3 }),
+  bet: new Howl({ src: ['/assets/sounds/jackpot-slot-machine-coin-loop-12-216269.mp3'], volume: 0.3 }),
+  win: new Howl({ src: ['/assets/sounds/you-win-sequence-2-183949.mp3'], volume: 0.3 }),
+  lose: new Howl({ src: ['/assets/sounds/game-level-complete-143022.mp3'], volume: 0.3 }),
+  streak: new Howl({ src: ['/assets/sounds/cash-register-purchase-87313.mp3'], volume: 0.4 }),
+  click: new Howl({ src: ['/assets/sounds/game-level-complete-143022.mp3'], volume: 0.3 }),
 };
-// If you don't have your own sounds, you can use free sounds from https://freesound.org/
-// Or change to a default beep for demo: new Howl({ src: ['https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg'] })
 
+// --- Utility Functions ---
 function formatTime(seconds) {
   const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
@@ -66,8 +65,6 @@ function payoutFor(result, pickVal, bet) {
   if (pickVal === 'odd' && oddDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
   return 0;
 }
-
-// Simple fake leaderboard data generator
 function getLeaderboard() {
   const names = ['ကိုကို', 'မမ', 'ခင်ဗျာ', 'Nilar', 'MinMin', 'KoPyae', 'Myo', 'Aye', 'Pyae', 'Su', 'Hnin'];
   return Array.from({ length: 5 }).map((_, i) => ({
@@ -77,6 +74,7 @@ function getLeaderboard() {
   }));
 }
 
+// --- Toast Component ---
 function Toast({ message, type }) {
   const bgColor =
     type === 'win' ? 'bg-green-500'
@@ -96,8 +94,8 @@ function Toast({ message, type }) {
 
 export default function SlotRell() {
   const { user } = useAuth();
-  // Remove local wallet state
-  // const [wallet, setWallet] = useState(1000);
+
+  // --- States ---
   const [bet, setBet] = useState(10);
   const [pick, setPick] = useState(null);
   const [result, setResult] = useState(null);
@@ -106,23 +104,22 @@ export default function SlotRell() {
   const [betOpen, setBetOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [toast, setToast] = useState(null);
-  const [lastWins, setLastWins] = useState([]);
+  const [lastWins, setLastWins] = useState([]); // last 5 digits
   const [jackpot, setJackpot] = useState(5000);
   const [nextJackpotTime, setNextJackpotTime] = useState('');
   const [totalBet, setTotalBet] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
-  // Leaderboard
   const [leaderboard, setLeaderboard] = useState(getLeaderboard());
-  // Streak
   const [winStreak, setWinStreak] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
 
-  // Refs for timeouts/state
+  // --- Refs for timeouts/state ---
   const cdRef = useRef(null);
   const jackpotRef = useRef(null);
   const pickRef = useRef(pick);
   useEffect(() => { pickRef.current = pick; }, [pick]);
 
+  // --- Lifecycle ---
   useEffect(() => {
     startGameLoop();
     updateJackpotCountdown();
@@ -138,7 +135,6 @@ export default function SlotRell() {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   }
-
   function updateJackpotCountdown() {
     const nextJackpotDate = calculateNextJackpot();
     const now = new Date();
@@ -180,7 +176,7 @@ export default function SlotRell() {
     }, 1000);
   }
 
-  // --- Main Game Logic with RTP + Animation + Streaks ---
+  // --- Main Game Logic ---
   function runGame() {
     const pickVal = pickRef.current;
     setRunning(true);
@@ -213,55 +209,29 @@ export default function SlotRell() {
       return;
     }
 
-    // RTP
-    const curTotalBet = totalBet + bet;
-    const curTotalPaid = totalPaid;
+    // --- RTP Logic: Mostly pure random, small chance of RTP correction ---
     const rtpNow = totalBet > 0 ? (totalPaid / totalBet) * 100 : 0;
-    // let rolled;
-    // if (Math.abs(rtpNow - RTP_TARGET) <= RTP_WINDOW) {
-    //   rolled = Math.floor(Math.random() * 10);
-    // } else if (rtpNow > RTP_TARGET + RTP_WINDOW) {
-    //   const loseResults = [];
-    //   for (let i = 0; i < 10; i++) {
-    //     if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
-    //   }
-    //   rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
-    // } else {
-    //   const winResults = [];
-    //   for (let i = 0; i < 10; i++) {
-    //     if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
-    //   }
-    //   rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
-    // }
-
     let rolled;
-const pureRandom = Math.random();
-if (pureRandom < 0.90) {
-  // 90% chance: pure random spin (feels more natural)
-  rolled = Math.floor(Math.random() * 10);
-} else {
-  // 10% chance: RTP correction logic if needed
-  if (rtpNow > RTP_TARGET + RTP_WINDOW) {
-    // Too generous, force a loss
-    const loseResults = [];
-    for (let i = 0; i < 10; i++) {
-      if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
+    const pureRandom = Math.random();
+    if (pureRandom < 0.90) {
+      rolled = Math.floor(Math.random() * 10);
+    } else {
+      if (rtpNow > RTP_TARGET + RTP_WINDOW) {
+        const loseResults = [];
+        for (let i = 0; i < 10; i++) {
+          if (payoutFor(i, pickVal, bet) === 0) loseResults.push(i);
+        }
+        rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
+      } else if (rtpNow < RTP_TARGET - RTP_WINDOW) {
+        const winResults = [];
+        for (let i = 0; i < 10; i++) {
+          if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
+        }
+        rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
+      } else {
+        rolled = Math.floor(Math.random() * 10);
+      }
     }
-    rolled = loseResults.length > 0 ? loseResults[Math.floor(Math.random() * loseResults.length)] : Math.floor(Math.random() * 10);
-  } else if (rtpNow < RTP_TARGET - RTP_WINDOW) {
-    // Too tight, force a win
-    const winResults = [];
-    for (let i = 0; i < 10; i++) {
-      if (payoutFor(i, pickVal, bet) > 0) winResults.push(i);
-    }
-    rolled = winResults.length > 0 ? winResults[Math.floor(Math.random() * winResults.length)] : Math.floor(Math.random() * 10);
-  } else {
-    // Still within RTP target, just random
-    rolled = Math.floor(Math.random() * 10);
-  }
-}
-
-
 
     let winAmt = payoutFor(rolled, pickVal, bet);
     let winStatus = winAmt > 0 ? 'win' : 'lose';
@@ -281,7 +251,7 @@ if (pureRandom < 0.90) {
       setShowStreak(false);
     }
 
-    // --- Message Toast ---
+    // --- Toast & Result ---
     let toastMsg = '';
     if (typeof pickVal === 'number') {
       if (pickVal === rolled) {
@@ -311,6 +281,8 @@ if (pureRandom < 0.90) {
         : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
     }
 
+    setResult(rolled);
+    setLastWins(prev => [rolled, ...prev.slice(0, 4)]);
     setTotalBet(prev => prev + bet);
     setTotalPaid(prev => prev + (winStatus === 'win' ? winAmt : 0));
     showToastFx(toastMsg, winStatus);
@@ -339,6 +311,7 @@ if (pureRandom < 0.90) {
 
   return (
     <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
+      {/* Header */}
       <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-900 rounded-lg shadow-md">
         <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">{user?.user_name || 'User Name'}</div>
         <div className="px-3 py-1 bg-[#0ea5e9] rounded-md text-sm font-bold shadow border-2 border-cyan-400">Balance: <span className="font-extrabold">{Number(user?.balance || 0).toFixed(2)}</span> MMK</div>
@@ -375,7 +348,7 @@ if (pureRandom < 0.90) {
         </div>
       </div>
 
-      {/* Marquee */}
+      {/* RTP Marquee */}
       <style>{`
         @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
         .animate-marquee {animation: marquee 15s linear infinite;}
@@ -385,12 +358,12 @@ if (pureRandom < 0.90) {
           🎉 သာမန်ကစားသမားများ: အနည်းဆုံးလောင်းကြေး 10 MMK | RTP: {rtp}% | ယနေ့ Jackpot: {jackpot} MMK
         </p>
       </div>
-      {/* Jackpot */}
+      {/* Jackpot Info */}
       <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
         <div className="text-lg font-bold text-teal-300">Jackpot: {jackpot.toLocaleString()} MMK</div>
         <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotTime}</div>
       </div>
-      {/* RTP display for admin/testing */}
+      {/* RTP Display */}
       <div className="w-full flex justify-around items-center my-2 p-2 bg-gray-700 rounded-lg shadow-md">
         <div className="text-base text-green-300">Total Bet: {totalBet} MMK</div>
         <div className="text-base text-pink-300">Total Paid: {totalPaid} MMK</div>
@@ -414,38 +387,36 @@ if (pureRandom < 0.90) {
       </AnimatePresence>
 
       {/* Result Digit */}
-     
+      <div className="my-8 w-64 h-64 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-cyan-500 border-dashed">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={result !== null ? result : "question"}
+            initial={{ scale: 0.3, opacity: 0, rotate: 0 }}
+            animate={{ scale: 1.2, opacity: 1, rotate: [0, 15, -15, 0] }}
+            exit={{ scale: 0.2, opacity: 0, rotate: 0 }}
+            transition={{
+              scale: { type: "spring", stiffness: 300, damping: 16 },
+              rotate: { type: "tween", duration: 0.6 },
+            }}
+            className="flex flex-col items-center justify-center w-full h-full"
+          >
+            <span className="text-7xl font-extrabold text-green-400 drop-shadow-2xl">
+              {result !== null ? result : '?'}
+            </span>
+          </motion.div>
+        </AnimatePresence>
+        {cd > 0 && (
+          <motion.p
+            className="absolute bottom-4 text-base text-yellow-300"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            {betOpen ? `Betting ends in: ${cd}s` : `Game start in: ${cd}s`}
+          </motion.p>
+        )}
+      </div>
 
-<div className="my-8 w-64 h-64 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-cyan-500 border-dashed">
-  <AnimatePresence mode="wait">
-    <motion.div
-      key={result !== null ? result : "question"}
-      initial={{ scale: 0.3, opacity: 0, rotate: 0 }}
-      animate={{ scale: 1.2, opacity: 1, rotate: [0, 15, -15, 0] }}
-      exit={{ scale: 0.2, opacity: 0, rotate: 0 }}
-      transition={{
-        scale: { type: "spring", stiffness: 300, damping: 16 },
-        rotate: { type: "tween", duration: 0.6 },
-      }}
-      className="flex flex-col items-center justify-center w-full h-full"
-    >
-      <span className="text-7xl font-extrabold text-green-400 drop-shadow-2xl">
-        {result !== null ? result : '?'}
-      </span>
-    </motion.div>
-  </AnimatePresence>
-  {cd > 0 && (
-    <motion.p
-      className="absolute bottom-4 text-base text-yellow-300"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      {betOpen ? `Betting ends in: ${cd}s` : `Game start in: ${cd}s`}
-    </motion.p>
-  )}
-</div>
-
-      {/* Bet Open message */}
+      {/* Bet Open Message */}
       {betOpen && (
         <motion.p
           className="mb-4 text-green-400 text-lg animate-pulse"
