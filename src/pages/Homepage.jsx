@@ -18,6 +18,7 @@ import live22Img from '../assets/game_logo/live22.png';
 import jiliImg from '../assets/game_logo/jili.png';
 import cq9Img from '../assets/game_logo/cq_9.png';
 import jdbImg from '../assets/game_logo/j_db.png';
+import digitSlotImg from '../assets/img/pd15.png';
 
 import omgImg from '../assets/img/g1.png';
 import jdbLogo from '../assets/img/g2.png';
@@ -165,6 +166,11 @@ function Homepage() {
 
         {/* Category Bar */}
         <div className="flex overflow-x-auto gap-4 py-4 mb-8 scrollbar-hide">
+          <div className='flex flex-col items-center min-w-[90px] px-4 py-3 rounded-xl font-semibold shadow transition-all duration-200 cursor-pointer select-none bg-yellow-400/80 text-black scale-105 bg-white/10 hover:bg-white/20 text-white' onClick={() => handlePlay('digit_slot')}>
+            <span className='text-2xl mb-1'>🎮</span>
+            <span className='text-base'>DigitSlot</span>
+            <img src={digitSlotImg} alt="DigitSlot" className='w-8 h-8 object-contain mb-1' />
+          </div>
           {catLoading ? (
             <div className="text-white text-center w-full">Loading categories...</div>
           ) : catError ? (

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Howl } from 'howler';
 import { Sparkles, Trophy } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 // RTP + Payouts
 const RTP_TARGET = 96.5;
@@ -94,8 +95,9 @@ function Toast({ message, type }) {
 }
 
 export default function SlotRell() {
-  // State
-  const [wallet, setWallet] = useState(1000);
+  const { user } = useAuth();
+  // Remove local wallet state
+  // const [wallet, setWallet] = useState(1000);
   const [bet, setBet] = useState(10);
   const [pick, setPick] = useState(null);
   const [result, setResult] = useState(null);
@@ -201,7 +203,7 @@ export default function SlotRell() {
       setTimeout(() => runCountdown(), 2000);
       return;
     }
-    if (bet > wallet) {
+    if (bet > user?.balance) {
       const msg = 'သင့်လက်ကျန်ငွေ မလုံလောက်ပါ။';
       setMessage(msg);
       showToastFx('⛔ ' + msg, 'lose');
@@ -309,9 +311,6 @@ if (pureRandom < 0.90) {
         : `😢 ရှုံးပါသည်။ ထွက်လာသော ဂဏန်း: ${rolled}.`;
     }
 
-    setWallet(prev => winStatus === 'win' ? prev - bet + winAmt : prev - bet);
-    setResult(rolled);
-    setLastWins(prev => [rolled, ...prev.slice(0, 4)]);
     setTotalBet(prev => prev + bet);
     setTotalPaid(prev => prev + (winStatus === 'win' ? winAmt : 0));
     showToastFx(toastMsg, winStatus);
@@ -341,25 +340,38 @@ if (pureRandom < 0.90) {
   return (
     <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
       <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-900 rounded-lg shadow-md">
-        <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">User Name</div>
-        <div className="px-3 py-1 bg-[#0ea5e9] rounded-md text-sm font-bold shadow border-2 border-cyan-400">Balance: <span className="font-extrabold">{wallet.toFixed(2)}</span> MMK</div>
+        <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">{user?.user_name || 'User Name'}</div>
+        <div className="px-3 py-1 bg-[#0ea5e9] rounded-md text-sm font-bold shadow border-2 border-cyan-400">Balance: <span className="font-extrabold">{Number(user?.balance || 0).toFixed(2)}</span> MMK</div>
         <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">Log</div>
       </div>
 
-      {/* Leaderboard */}
+      {/* Leaderboard Marquee */}
+      <style>{`
+        @keyframes leaderboard-marquee {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+        .leaderboard-marquee {
+          display: flex;
+          white-space: nowrap;
+          animation: leaderboard-marquee 18s linear infinite;
+        }
+      `}</style>
       <div className="w-full flex flex-col items-center mb-2">
         <div className="flex items-center gap-2 mb-2">
           <Trophy className="text-yellow-300" size={28} />
           <span className="font-bold text-yellow-200 text-lg">Leaderboard</span>
         </div>
-        <div className="grid grid-cols-3 gap-2 w-full max-w-xl bg-gray-800 p-2 rounded-xl shadow-inner text-sm">
-          {leaderboard.map((entry, i) => (
-            <div key={i} className="flex flex-col items-center py-2">
-              <span className="font-bold text-cyan-400">{entry.name}</span>
-              <span className="text-yellow-300">{entry.amount} MMK</span>
-              <span className="text-gray-400">{entry.time}</span>
-            </div>
-          ))}
+        <div className="w-full max-w-xl bg-gray-800 p-2 rounded-xl shadow-inner text-sm overflow-hidden">
+          <div className="leaderboard-marquee">
+            {leaderboard.map((entry, i) => (
+              <div key={i} className="flex flex-col items-center py-2 px-8">
+                <span className="font-bold text-cyan-400">{entry.name}</span>
+                <span className="text-yellow-300">{entry.amount} MMK</span>
+                <span className="text-gray-400">{entry.time}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

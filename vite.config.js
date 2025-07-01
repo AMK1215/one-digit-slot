@@ -8,5 +8,16 @@ export default defineConfig({
     tailwindcss(),
     react()
   ],
+
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://luckymillion.pro',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '/api'),
+      },
+    },
+  },
   
 })

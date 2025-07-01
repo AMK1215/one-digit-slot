@@ -33,12 +33,12 @@ function App() {
           </section>
 
           {/* Jackpot Game */}
-          <section className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6">
+          {/* <section className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6">
             <h4 className="text-3xl font-bold text-pink-400 mb-6 text-center">
               💰 OneDigitSlo Jackpot
             </h4>
             <JackPot />
-          </section>
+          </section> */}
         </div>
       </main>
       {/* Footer */}
