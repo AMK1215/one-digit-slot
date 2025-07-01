@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Header from './Header';
 
-const GameList = ({ categories = [], games = [], onCategoryClick, selectedCategory, onPlay, showSearch = true }) => {
+const GameList = ({ categories = [], games = [], onCategoryClick, selectedCategory, onPlay, showSearch = true, onGameLaunch }) => {
   const [search, setSearch] = useState('');
 
   const filteredGames = games.filter(game =>
@@ -58,7 +58,7 @@ const GameList = ({ categories = [], games = [], onCategoryClick, selectedCatego
               </span>
               <button
                 className="w-full px-4 py-2 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold shadow hover:from-yellow-300 hover:to-yellow-400 transition-all duration-200 mt-auto"
-                onClick={() => onPlay && onPlay(game)}
+                onClick={() => (onGameLaunch ? onGameLaunch(game) : (onPlay && onPlay(game)))}
               >
                 Play Game
               </button>
