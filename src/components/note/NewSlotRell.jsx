@@ -19,7 +19,6 @@ const smallDigits = [0, 1, 2, 3, 4];
 const bigDigits = [6, 7, 8, 9];
 const evenDigits = [0, 2, 4, 6, 8];
 const oddDigits = [1, 3, 5, 7, 9];
-const BET_AMOUNTS = [10, 20, 50, 100, 200, 400, 1000, 10000];
 
 const sfx = {
   bet: new Howl({ src: ['/assets/sounds/jackpot-slot-machine-coin-loop-12-216269.mp3'], volume: 0.3 }),
@@ -67,6 +66,13 @@ function payoutFor(result, pickVal, bet) {
   if (pickVal === 'odd' && oddDigits.includes(result)) return bet * PAYOUT_ODD_EVEN;
   return 0;
 }
+function getMultiplier(pickVal) {
+  if (pickVal === 5 || pickVal === 'middle') return PAYOUT_DIGIT_5;
+  if (typeof pickVal === 'number') return PAYOUT_EXACT_DIGIT;
+  if (pickVal === 'small' || pickVal === 'big') return PAYOUT_SMALL_BIG;
+  if (pickVal === 'even' || pickVal === 'odd') return PAYOUT_ODD_EVEN;
+  return '--';
+}
 function getLeaderboard() {
   const names = ['ကိုကို', 'မမ', 'ခင်ဗျာ', 'Nilar', 'MinMin', 'KoPyae', 'Myo', 'Aye', 'Pyae', 'Su', 'Hnin'];
   return Array.from({ length: 5 }).map((_, i) => ({
@@ -98,7 +104,7 @@ export default function SlotRell() {
   const { user, setUser } = useAuth();
 
   // --- States ---
-  const [bet, setBet] = useState(BET_AMOUNTS[0]);
+  const [bet, setBet] = useState(10);
   const [pick, setPick] = useState(null);
   const [result, setResult] = useState(null);
   const [message, setMessage] = useState('');
@@ -236,6 +242,7 @@ export default function SlotRell() {
 
     let winAmt = payoutFor(rolled, pickVal, bet);
     let winStatus = winAmt > 0 ? 'win' : 'lose';
+    let multiplier = winAmt > 0 ? winAmt / bet : getMultiplier(pickVal);
 
     // --- Streak & Sound ---
     let newStreak = winStatus === 'win' ? winStreak + 1 : 0;
@@ -315,6 +322,7 @@ export default function SlotRell() {
               bet_type: betType,
               digit,
               bet_amount: bet,
+              multiplier,
               rolled_number: rolled,
               win_amount: winAmt,
               profit: winAmt - bet,
@@ -328,11 +336,13 @@ export default function SlotRell() {
         }),
       });
       const data = await res.json();
+      // Optionally update balance from backend:
       if (data && data.data && data.data.balance && setUser) {
         setUser(u => ({ ...u, balance: data.data.balance }));
       }
     } catch (err) {
-      // Optional: show error toast
+      // You may show an error toast here
+      // showToastFx("Backend error: " + err.message, "lose");
     }
 
     setTimeout(() => {
@@ -341,8 +351,8 @@ export default function SlotRell() {
     }, 2000);
   }
 
-  function handleBetAmountSelect(val) {
-    setBet(val);
+  function handleBetChange(val) {
+    setBet(Math.max(1, val));
     sfx.click.play();
   }
   function handlePick(val) {
@@ -351,6 +361,7 @@ export default function SlotRell() {
   }
 
   const rtp = totalBet > 0 ? ((totalPaid / totalBet) * 100).toFixed(2) : "---";
+  const multiplier = getMultiplier(pick);
 
   return (
     <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
@@ -413,23 +424,13 @@ export default function SlotRell() {
         <div className="text-base text-yellow-300 font-bold">RTP: {rtp}%</div>
       </div>
 
-      {/* Bet Amount Choose */}
-      <div className="w-full flex flex-wrap justify-center gap-2 my-4">
-        {BET_AMOUNTS.map(a => (
-          <button
-            key={a}
-            onClick={() => handleBetAmountSelect(a)}
-            className={`px-6 py-3 rounded-lg font-bold text-lg transition-all duration-150 shadow border-2 ${
-              bet === a
-                ? 'bg-cyan-500 text-white border-cyan-400 scale-105'
-                : 'bg-gray-700 text-cyan-200 border-gray-600 hover:bg-cyan-600 hover:text-white'
-            } ${!betOpen ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!betOpen}
-          >
-            {a.toLocaleString()} MMK
-          </button>
-        ))}
+      {/* Multiplier */}
+      <div className="flex justify-center items-center gap-4 mb-2">
+        <span className="px-4 py-2 rounded bg-gray-800 text-yellow-300 font-bold text-lg shadow-md">
+          Multiplier: <span className="font-extrabold">{multiplier}</span>x
+        </span>
       </div>
+      <div className="text-xs text-gray-400 mb-4">[ဂဏန်းတစ်ခု - 10x, 5 - 15x, (Small/Big/Even/Odd) - 2x]</div>
 
       {/* Streak Celebration */}
       <AnimatePresence>
@@ -485,6 +486,30 @@ export default function SlotRell() {
           animate={{ opacity: 1 }}
         >💸 လောင်းကြေးတင်နိုင်ပါပြီ! {cd} စက္ကန့်အတွင်း ထိုးပါ!</motion.p>
       )}
+
+      {/* Bet Controls */}
+      <div className="w-full flex flex-col items-center mb-6">
+        <div className="flex items-center justify-center w-full max-w-sm">
+          <button
+            onClick={() => handleBetChange(bet - 10)}
+            className="p-3 bg-gray-700 text-white rounded-l-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >-</button>
+          <input
+            type="number"
+            min="1"
+            value={bet}
+            onChange={e => handleBetChange(Number(e.target.value))}
+            className="flex-grow p-3 bg-gray-700 text-white text-center font-bold text-xl border-l border-r border-gray-600 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            disabled={!betOpen}
+          />
+          <button
+            onClick={() => handleBetChange(bet + 10)}
+            className="p-3 bg-gray-700 text-white rounded-r-lg font-bold text-xl hover:bg-gray-600 transition duration-200"
+            disabled={!betOpen}
+          >+</button>
+        </div>
+      </div>
 
       {/* Digits and Group Buttons */}
       <div className="w-full mb-8 max-w-xl">

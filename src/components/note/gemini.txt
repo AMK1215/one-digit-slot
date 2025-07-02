@@ -467,22 +467,12 @@ export default function SlotRell() {
               bet === a
                 ? 'bg-cyan-500 text-white border-cyan-400 scale-105'
                 : 'bg-gray-700 text-cyan-200 border-gray-600 hover:bg-cyan-600 hover:text-white'
-            } ${gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={gameRunning}
+            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`} 
+            disabled={!bettingOpen || gameRunning}
           >
             {a.toLocaleString()} MMK
           </button>
         ))}
-      </div>
-      {/* Bet Amount Info */}
-      <div className="w-full flex flex-col items-center mb-2">
-        <span className="text-sm text-cyan-300 font-semibold">Selected Bet: <span className="text-lg text-cyan-400 font-bold">{bet.toLocaleString()} MMK</span></span>
-        <span className="text-xs text-gray-400 mt-1">Your selected bet will be used for the <span className="font-semibold text-yellow-300">next round</span>.</span>
-        {bettingOpen ? (
-          <span className="text-xs text-green-400">Betting is open! Place your bet now.</span>
-        ) : (
-          <span className="text-xs text-gray-400">You can change the bet amount anytime before the next round starts.</span>
-        )}
       </div>
 
       {/* Streak Celebration */}

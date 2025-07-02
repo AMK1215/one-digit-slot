@@ -166,7 +166,7 @@ function Homepage() {
 
         {/* Category Bar */}
         <div className="flex overflow-x-auto gap-4 py-4 mb-8 scrollbar-hide">
-          <div className='flex flex-col items-center min-w-[90px] px-4 py-3 rounded-xl font-semibold shadow transition-all duration-200 cursor-pointer select-none bg-yellow-400/80 text-black scale-105 bg-white/10 hover:bg-white/20 text-white' onClick={() => handlePlay('digit_slot')}>
+          <div className='flex flex-col items-center min-w-[90px] px-4 py-3 rounded-xl font-semibold shadow transition-all duration-200 cursor-pointer select-none bg-sky-400/80 text-black scale-105 bg-sky/10 hover:bg-sky/20 text-white' onClick={() => handlePlay('digit_slot')}>
             <span className='text-2xl mb-1'>🎮</span>
             <span className='text-base'>DigitSlot</span>
             <img src={digitSlotImg} alt="DigitSlot" className='w-8 h-8 object-contain mb-1' />
