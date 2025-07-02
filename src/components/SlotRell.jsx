@@ -587,7 +587,7 @@ export default function SlotRell() {
       } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
       style={{ minWidth: 64, minHeight: 34 }}
       disabled={!bettingOpen || gameRunning}
-    >Small</button>
+    >Small(0-4)</button>
     <button
       onClick={() => handlePick('middle')}
       className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
