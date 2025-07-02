@@ -451,7 +451,7 @@ export default function SlotRell() {
 
       {/* Digits and Group Buttons */}
       <div className="w-full mb-8 max-w-xl">
-        <h2 className="text-xl font-semibold text-gray-300 mb-3">သင်၏ ကံကောင်းသော ဂဏန်းကို ရွေးချယ်ပါ</h2>
+        <h2 className="text-xl font-semibold text-gray-300 mb-3">ဂဏန်းတခုကို ရွေးချယ်ပါ</h2>
         <div className="grid grid-cols-5 gap-3 mb-4">
           {[...Array(10).keys()].map(d => (
             <button

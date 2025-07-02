@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import useApi from '../hooks/useApi';
 import GameList from '../components/GameList';
 import { AuthContext } from '../contexts/AuthContext';
+import BASE_URL from '../hooks/baseUrl';
 
 const GameListPage = () => {
   const { gameTypeId, productId } = useParams();
   const { apiCall } = useApi();
   const { auth } = useContext(AuthContext);
-  const navigate = useNavigate();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -16,9 +16,10 @@ const GameListPage = () => {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // New for launch modal
+  // Launch game modal state
   const [launchLoading, setLaunchLoading] = useState(false);
-  const [launchError, setLaunchError] = useState(null);
+  const [launchError, setLaunchError] = useState("");
+  const [launchingGameId, setLaunchingGameId] = useState(null);
 
   useEffect(() => {
     setGames([]);
@@ -74,49 +75,64 @@ const GameListPage = () => {
 
   // --- GAME LAUNCH HANDLER ---
   const handleLaunchGame = async (game) => {
-    console.log('Launch game clicked:', game);
-    if (!auth) {
-      console.log('User not logged in, redirecting to /login');
-      navigate('/login');
-      return;
-    }
+    setLaunchingGameId(game.id || null);
+    setLaunchError("");
     setLaunchLoading(true);
-    setLaunchError(null);
 
     try {
-      const payload = {
-        game_code: game.game_code || game.code,
-        product_code: game.product_code || productId,
-        game_type: game.game_type || gameTypeId, // or from game obj if provided
-      };
-      console.log('Launching game with payload:', payload);
-      const response = await apiCall('/seamless/launch-game', {
-        method: 'POST',
-        body: JSON.stringify(payload)
+      const res = await fetch(`${BASE_URL}/seamless/launch-game`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: "Bearer " + localStorage.getItem("token"),
+        },
+        body: JSON.stringify({
+          game_code: game.game_code,
+          product_code: game.product_code,
+          game_type: game.game_type,
+        }),
       });
-      console.log('Launch game API response:', response);
 
-      // Backend may return a url or an html content (iframe etc)
-      if (response.content) {
-        // If backend returns HTML content, open in modal or new tab (e.g. for PGSoft)
-        const newWin = window.open();
-        newWin.document.write(response.content);
-        newWin.document.close();
-      } else if (response.url) {
-        window.open(response.url, '_blank');
+      const result = await res.json();
+
+      if (result.code === 200) {
+        if (result.url) {
+          window.location.href = result.url;
+        } else if (result.content) {
+          const gameWindow = window.open();
+          if (gameWindow) {
+            gameWindow.document.write(result.content);
+            gameWindow.document.close();
+          } else {
+            setLaunchError("Popup blocked. Please allow popups.");
+          }
+        } else {
+          setLaunchError(result.message || "Launch failed: No URL or content.");
+        }
       } else {
-        throw new Error('No game URL or content returned');
+        setLaunchError(result.message || "Failed to launch game.");
       }
-    } catch (err) {
-      setLaunchError(err.message || 'Game launch failed');
-      console.error('Launch game error:', err);
+    } catch (e) {
+      setLaunchError("Network error. Please try again.");
     } finally {
       setLaunchLoading(false);
+      setLaunchingGameId(null);
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white text-xl">Loading games...</div>;
-  if (error) return <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-red-400 text-xl">{error}</div>;
+  if (loading)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white text-xl">
+        Loading games...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-red-400 text-xl">
+        {error}
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col">
@@ -147,7 +163,7 @@ const GameListPage = () => {
             onClick={loadMore}
             disabled={loadingMore}
           >
-            {loadingMore ? 'Loading...' : 'Load More'}
+            {loadingMore ? "Loading..." : "Load More"}
           </button>
         </div>
       )}
