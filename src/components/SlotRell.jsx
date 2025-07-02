@@ -397,85 +397,70 @@ export default function SlotRell() {
   const rtpPercentage = totalBet > 0 ? ((totalPaid / totalBet) * 100).toFixed(2) : "---";
 
   return (
-    <div className="p-4 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
+    <div className="p-1 rounded-2xl w-full min-h-screen text-center bg-[#15192c] text-white font-inter flex flex-col items-center">
       {/* Header */}
-      <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-900 rounded-lg shadow-md">
+      {/* <div className="w-full flex justify-between items-center p-2 mb-4 bg-gray-900 rounded-lg shadow-md">
         <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">{user?.user_name || 'User Name'}</div>
         <div className="px-3 py-1 bg-[#0ea5e9] rounded-md text-sm font-bold shadow border-2 border-cyan-400">Balance: <span className="font-extrabold">{Number(user?.balance || 0).toFixed(2)}</span> MMK</div>
         <div className="px-3 py-1 bg-gray-800 rounded-md text-sm">Log</div>
-      </div>
+      </div> */}
 
-      {/* Leaderboard Marquee */}
-      <style>{`
-        @keyframes leaderboard-marquee {
-          0% { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
-        }
-        .leaderboard-marquee {
-          display: flex;
-          white-space: nowrap;
-          animation: leaderboard-marquee 18s linear infinite;
-        }
-      `}</style>
-      <div className="w-full flex flex-col items-center mb-2">
-        <div className="flex items-center gap-2 mb-2">
-          <Trophy className="text-yellow-300" size={28} />
-          <span className="font-bold text-yellow-200 text-lg">Leaderboard</span>
-        </div>
-        <div className="w-full max-w-xl bg-gray-800 p-2 rounded-xl shadow-inner text-sm overflow-hidden">
-          <div className="leaderboard-marquee">
-            {leaderboard.map((entry, i) => (
-              <div key={i} className="flex flex-col items-center py-2 px-8">
-                <span className="font-bold text-cyan-400">{entry.name}</span>
-                <span className="text-yellow-300">{entry.amount} MMK</span>
-                <span className="text-gray-400">{entry.time}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+     
+      {/* BET AMOUNT Panel (Pragmatic Style, Auto-spin) */}
+<div className="w-full max-w-xs mx-auto rounded-xl bg-[#181c36] border-2 border-[#22225c] shadow-xl p-4 mb-6">
+  <div className="flex justify-between items-center">
+    <span className="text-base text-gray-200 font-bold">BET</span>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => {
+          const idx = BET_AMOUNTS.indexOf(bet);
+          if (idx > 0) setBet(BET_AMOUNTS[idx - 1]);
+          sfx.click.play();
+        }}
+        className="w-8 h-8 text-xl bg-gray-700 text-cyan-200 rounded-lg flex items-center justify-center"
+        disabled={bet === BET_AMOUNTS[0]}
+      >-</button>
+      <span className="mx-2 text-xl text-cyan-300 font-bold">{bet.toLocaleString()} <span className="text-sm">MMK</span></span>
+      <button
+        onClick={() => {
+          const idx = BET_AMOUNTS.indexOf(bet);
+          if (idx < BET_AMOUNTS.length - 1) setBet(BET_AMOUNTS[idx + 1]);
+          sfx.click.play();
+        }}
+        className="w-8 h-8 text-xl bg-gray-700 text-cyan-200 rounded-lg flex items-center justify-center"
+        disabled={bet === BET_AMOUNTS[BET_AMOUNTS.length - 1]}
+      >+</button>
+      <button
+        onClick={() => { setBet(BET_AMOUNTS[BET_AMOUNTS.length-1]); sfx.click.play(); }}
+        className="ml-3 px-3 py-1 rounded-lg bg-yellow-400 text-black font-bold shadow"
+      >BET MAX</button>
+    </div>
+  </div>
+  <div className="mt-3 flex justify-between items-center">
+    <div>
+      <span className="text-sm text-gray-300">ဂဏန်း/အုပ်စု</span>
+      <div className="text-base font-bold text-white">
+        {typeof pick === "number"
+          ? pick
+          : pick === "small" ? "Small (0-4)"
+          : pick === "big" ? "Big (6-9)"
+          : pick === "middle" ? "Middle (5)"
+          : pick === "even" ? "Even (0,2,4,6,8)"
+          : pick === "odd" ? "Odd (1,3,5,7,9)"
+          : "-"}
       </div>
+    </div>
+    <div>
+      <span className="text-sm text-gray-300 block">အနိုင်ရငွေ</span>
+      <span className="text-lg font-bold text-gray-300">
+        {lastRolledNumbers && lastRolledNumbers.length > 0 && result !== null ? (getPayoutFor(result, pick, bet).toLocaleString()) : "0"} MMK
+      </span>
+    </div>
+  </div>
+</div>
 
-      {/* RTP Marquee */}
-      <style>{`
-        @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
-        .animate-marquee {animation: marquee 15s linear infinite;}
-      `}</style>
-      <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
-        <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
-          🎉 သာမန်ကစားသမားများ: အနည်းဆုံးလောင်းကြေး 10 MMK | RTP: {rtpPercentage}% | ယနေ့ Jackpot: {jackpot} MMK
-        </p>
-      </div>
-      {/* Jackpot Info */}
-      <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
-        <div className="text-lg font-bold text-teal-300">Jackpot: {jackpot.toLocaleString()} MMK</div>
-        <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotCountdown}</div>
-      </div>
-      {/* RTP Display */}
-      <div className="w-full flex justify-around items-center my-2 p-2 bg-gray-700 rounded-lg shadow-md">
-        <div className="text-base text-green-300">Total Bet: {totalBet.toLocaleString()} MMK</div>
-        <div className="text-base text-pink-300">Total Paid: {totalPaid.toLocaleString()} MMK</div>
-        <div className="text-base text-yellow-300 font-bold">RTP: {rtpPercentage}%</div>
-      </div>
-
-      {/* Bet Amount Choose */}
-      <div className="w-full flex flex-wrap justify-center gap-2 my-4">
-        {BET_AMOUNTS.map(a => (
-          <button
-            key={a}
-            onClick={() => handleBetAmountSelect(a)}
-            className={`px-6 py-3 rounded-lg font-bold text-lg transition-all duration-150 shadow border-2 ${
-              bet === a
-                ? 'bg-cyan-500 text-white border-cyan-400 scale-105'
-                : 'bg-gray-700 text-cyan-200 border-gray-600 hover:bg-cyan-600 hover:text-white'
-            } ${gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={gameRunning}
-          >
-            {a.toLocaleString()} MMK
-          </button>
-        ))}
-      </div>
       {/* Bet Amount Info */}
-      <div className="w-full flex flex-col items-center mb-2">
+      {/* <div className="w-full flex flex-col items-center mb-2">
         <span className="text-sm text-cyan-300 font-semibold">Selected Bet: <span className="text-lg text-cyan-400 font-bold">{bet.toLocaleString()} MMK</span></span>
         <span className="text-xs text-gray-400 mt-1">Your selected bet will be used for the <span className="font-semibold text-yellow-300">next round</span>.</span>
         {bettingOpen ? (
@@ -483,7 +468,7 @@ export default function SlotRell() {
         ) : (
           <span className="text-xs text-gray-400">You can change the bet amount anytime before the next round starts.</span>
         )}
-      </div>
+      </div> */}
 
       {/* Streak Celebration */}
       <AnimatePresence>
@@ -502,7 +487,7 @@ export default function SlotRell() {
       </AnimatePresence>
 
       {/* Result Digit */}
-      <div className="my-8 w-64 h-64 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-cyan-500 border-dashed">
+      {/* <div className="my-8 w-64 h-64 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-7xl shadow-2xl border-4 border-cyan-500 border-dashed">
         <AnimatePresence mode="wait">
           <motion.div
             key={result !== null ? result : "question"}
@@ -529,7 +514,37 @@ export default function SlotRell() {
             {bettingOpen ? `Betting ends in: ${countdown}s` : `Game start in: ${countdown}s`}
           </motion.p>
         )}
-      </div>
+      </div> */}
+
+<div className="my-6 w-32 h-32 bg-[#181d32] rounded-full flex flex-col items-center justify-center relative overflow-hidden text-green-400 font-extrabold text-5xl shadow-2xl border-4 border-cyan-500 border-dashed">
+  <AnimatePresence mode="wait">
+    <motion.div
+      key={result !== null ? result : "question"}
+      initial={{ scale: 0.3, opacity: 0, rotate: 0 }}
+      animate={{ scale: 1.2, opacity: 1, rotate: [0, 15, -15, 0] }}
+      exit={{ scale: 0.2, opacity: 0, rotate: 0 }}
+      transition={{
+        scale: { type: "spring", stiffness: 300, damping: 16 },
+        rotate: { type: "tween", duration: 0.6 },
+      }}
+      className="flex flex-col items-center justify-center w-full h-full"
+    >
+      <span className="text-5xl font-extrabold text-green-400 drop-shadow-2xl">
+        {result !== null ? result : '?'}
+      </span>
+    </motion.div>
+  </AnimatePresence>
+  {countdown > 0 && (
+    <motion.p
+      className="absolute bottom-2 text-sm text-yellow-300"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+    >
+      {bettingOpen ? `Betting ends in: ${countdown}s` : `Game start in: ${countdown}s`}
+    </motion.p>
+  )}
+</div>
+
 
       {/* Bet Open Message */}
       {bettingOpen && (
@@ -542,71 +557,82 @@ export default function SlotRell() {
 
       {/* Digits and Group Buttons */}
       <div className="w-full mb-8 max-w-xl">
-        <h2 className="text-xl font-semibold text-gray-300 mb-3">ဂဏန်းတခုကို ရွေးချယ်ပါ</h2>
-        <div className="grid grid-cols-5 gap-3 mb-4">
-          {[...Array(10).keys()].map(d => (
-            <button
-              key={d}
-              onClick={() => handlePick(d)}
-              className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-                typeof pick === 'number' && pick === d
-                  ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                  : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-              } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={!bettingOpen || gameRunning}
-            >{d}</button>
-          ))}
-        </div>
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <button
-            onClick={() => handlePick('small')}
-            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-              pick === 'small'
-                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!bettingOpen || gameRunning}
-          >Small (0-4)</button>
-          <button
-            onClick={() => handlePick('middle')}
-            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-              pick === 'middle'
-                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!bettingOpen || gameRunning}
-          >Middle (5)</button>
-          <button
-            onClick={() => handlePick('big')}
-            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-              pick === 'big'
-                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!bettingOpen || gameRunning}
-          >Big (6-9)</button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <button
-            onClick={() => handlePick('even')}
-            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-              pick === 'even'
-                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!bettingOpen || gameRunning}
-          >Even (0,2,4,6,8)</button>
-          <button
-            onClick={() => handlePick('odd')}
-            className={`p-4 rounded-lg font-bold text-xl transition-all duration-200 shadow-md ${
-              pick === 'odd'
-                ? 'bg-cyan-600 text-white ring-4 ring-cyan-300 scale-105'
-                : 'bg-gray-700 text-gray-200 hover:bg-cyan-500 hover:text-white border border-gray-600'
-            } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={!bettingOpen || gameRunning}
-          >Odd (1,3,5,7,9)</button>
-        </div>
-      </div>
+  <h4 className="text-base font-semibold text-gray-300 mb-2">
+    <span className="text-yellow-300">{user?.user_name || 'User Name'} - </span>
+    {/* balance */}
+    <span className="text-white"> MMK: {user?.balance || 0} </span>
+  </h4>
+  <div className="grid grid-cols-5 gap-2 mb-3">
+    {[...Array(10).keys()].map(d => (
+      <button
+        key={d}
+        onClick={() => handlePick(d)}
+        className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+          typeof pick === 'number' && pick === d
+            ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+            : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+        } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+        style={{ minWidth: 34, minHeight: 34 }}
+        disabled={!bettingOpen || gameRunning}
+      >{d}</button>
+    ))}
+  </div>
+  <div className="grid grid-cols-3 gap-2 mb-3">
+    <button
+      onClick={() => handlePick('small')}
+      className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+        pick === 'small'
+          ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+          : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+      } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 64, minHeight: 34 }}
+      disabled={!bettingOpen || gameRunning}
+    >Small</button>
+    <button
+      onClick={() => handlePick('middle')}
+      className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+        pick === 'middle'
+          ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+          : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+      } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 64, minHeight: 34 }}
+      disabled={!bettingOpen || gameRunning}
+    >Middle (5)</button>
+    <button
+      onClick={() => handlePick('big')}
+      className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+        pick === 'big'
+          ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+          : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+      } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 64, minHeight: 34 }}
+      disabled={!bettingOpen || gameRunning}
+    >Big (6-9)</button>
+  </div>
+  <div className="grid grid-cols-2 gap-2 mb-3">
+    <button
+      onClick={() => handlePick('even')}
+      className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+        pick === 'even'
+          ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+          : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+      } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 64, minHeight: 34 }}
+      disabled={!bettingOpen || gameRunning}
+    >Even (0,2,4,6,8)</button>
+    <button
+      onClick={() => handlePick('odd')}
+      className={`p-1 rounded-md font-bold text-base transition-all duration-150 shadow ${
+        pick === 'odd'
+          ? 'bg-cyan-600 text-white ring-2 ring-cyan-300 scale-105'
+          : 'bg-gray-800 text-cyan-200 hover:bg-cyan-500 hover:text-white border border-gray-700'
+      } ${!bettingOpen || gameRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 64, minHeight: 34 }}
+      disabled={!bettingOpen || gameRunning}
+    >Odd (1,3,5,7,9)</button>
+  </div>
+</div>
+
 
       {/* Last Wins */}
       <div className="w-full max-w-xs flex justify-center items-center gap-2 mb-6">
@@ -615,6 +641,57 @@ export default function SlotRell() {
           {lastRolledNumbers.map((num, idx) => (
             <span key={idx} className="w-8 h-8 flex items-center justify-center bg-black rounded-full text-white font-bold text-lg">{num}</span>
           ))}
+        </div>
+      </div>
+      {/* RTP Marquee */}
+      <style>{`
+        @keyframes marquee {0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
+        .animate-marquee {animation: marquee 15s linear infinite;}
+      `}</style>
+      <div className="w-full my-2 bg-gray-800 p-2 rounded-lg shadow-md overflow-hidden">
+        <p className="text-sm text-yellow-300 whitespace-nowrap animate-marquee">
+          🎉 သာမန်ကစားသမားများ: အနည်းဆုံးလောင်းကြေး 10 MMK | RTP: {rtpPercentage}% | ယနေ့ Jackpot: {jackpot} MMK
+        </p>
+      </div>
+      {/* Jackpot Info */}
+      <div className="w-full flex justify-around items-center my-4 p-2 bg-gray-800 rounded-lg shadow-md">
+        <div className="text-lg font-bold text-teal-300">Jackpot: {jackpot.toLocaleString()} MMK</div>
+        <div className="text-lg font-bold text-blue-300">Next Jackpot: {nextJackpotCountdown}</div>
+      </div>
+      {/* RTP Display */}
+      <div className="w-full flex justify-around items-center my-2 p-2 bg-gray-700 rounded-lg shadow-md">
+        <div className="text-base text-green-300">Total Bet: {totalBet.toLocaleString()} MMK</div>
+        <div className="text-base text-pink-300">Total Paid: {totalPaid.toLocaleString()} MMK</div>
+        <div className="text-base text-yellow-300 font-bold">RTP: {rtpPercentage}%</div>
+      </div>
+
+       {/* Leaderboard Marquee */}
+       <style>{`
+        @keyframes leaderboard-marquee {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+        .leaderboard-marquee {
+          display: flex;
+          white-space: nowrap;
+          animation: leaderboard-marquee 18s linear infinite;
+        }
+      `}</style>
+      <div className="w-full flex flex-col items-center mb-2">
+        <div className="flex items-center gap-2 mb-2">
+          <Trophy className="text-yellow-300" size={28} />
+          <span className="font-bold text-yellow-200 text-lg">Leaderboard</span>
+        </div>
+        <div className="w-full max-w-xl bg-gray-800 p-2 rounded-xl shadow-inner text-sm overflow-hidden">
+          <div className="leaderboard-marquee">
+            {leaderboard.map((entry, i) => (
+              <div key={i} className="flex flex-col items-center py-2 px-8">
+                <span className="font-bold text-cyan-400">{entry.name}</span>
+                <span className="text-yellow-300">{entry.amount} MMK</span>
+                <span className="text-gray-400">{entry.time}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       {message && (
